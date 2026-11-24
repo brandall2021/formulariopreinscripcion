@@ -7,7 +7,7 @@ class Solicitud(Base):
     __tablename__ = "solicitudes"
     __table_args__ = (UniqueConstraint("convocatoria_id", "dni"),)
     id: Mapped[int] = mapped_column(primary_key=True)
-    numero: Mapped[str] = mapped_column(String(20), unique=True, index=True)
+    numero: Mapped[str | None] = mapped_column(String(20), unique=True, index=True, nullable=True)
     alumno_id: Mapped[int] = mapped_column(ForeignKey("alumnos.id"))
     convocatoria_id: Mapped[int] = mapped_column(ForeignKey("convocatorias.id"))
     carrera_id: Mapped[int] = mapped_column(ForeignKey("carreras.id"))

@@ -3,7 +3,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.alumnos.models import Alumno
-from app.catalogos.models import Carrera, Convocatoria, TipoDocumento
+from app.catalogos.models import Carrera, Convocatoria
 from app.solicitudes.models import Solicitud
 from app.solicitudes.state import InvalidTransition, transition
 
@@ -31,3 +31,15 @@ def test_transiciones_validas():
     assert transition("RECIBIDA", "EN_VALIDACION") == "EN_VALIDACION"
     with pytest.raises(InvalidTransition):
         transition("BORRADOR", "DOCUMENTACION_APROBADA")
+
+
+def test_rechazo_desde_estados_activos():
+    activos = ["BORRADOR", "RECIBIDA", "EN_VALIDACION", "EN_AUDITORIA",
+               "OBSERVADA", "PENDIENTE_ALUMNO", "REENVIADA", "EN_REAUDITORIA",
+               "DOCUMENTACION_APROBADA"]
+    for estado in activos:
+        assert transition(estado, "RECHAZADA") == "RECHAZADA"
+    with pytest.raises(InvalidTransition):
+        transition("FINALIZADA", "RECHAZADA")
+    with pytest.raises(InvalidTransition):
+        transition("RECHAZADA", "RECIBIDA")

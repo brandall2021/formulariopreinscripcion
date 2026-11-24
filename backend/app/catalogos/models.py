@@ -1,5 +1,5 @@
 from sqlalchemy import Boolean, ForeignKey, Integer, String, UniqueConstraint
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 from app.infra.db import Base
 
 class Convocatoria(Base):
