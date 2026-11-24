@@ -3,6 +3,7 @@ import subprocess
 import sys
 from pathlib import Path
 from sqlalchemy import inspect, text
+import app.main  # noqa: F401 — registra los 15 modelos en Base.metadata
 from app.infra.config import get_settings
 from app.infra.db import Base
 
