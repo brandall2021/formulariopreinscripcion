@@ -12,7 +12,9 @@ TIPOS = [
 CARRERAS = [("Contador Público", "CP"), ("Economía", "ECO"), ("Administración", "ADM")]
 
 def seed_catalogos(db: Session) -> None:
-    if db.query(Convocatoria).first() is not None:
+    # El guard es específico de la convocatoria semilla: si ya existe otra
+    # convocatoria (p. ej. de otro año), igual debemos cargar catálogos.
+    if db.query(Convocatoria).filter_by(nombre="Convocatoria 2026").first() is not None:
         return
     conv = Convocatoria(nombre="Convocatoria 2026", anio=2026, activa=True)
     db.add(conv)
