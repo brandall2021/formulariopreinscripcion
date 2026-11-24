@@ -1,7 +1,7 @@
 import pytest
 from sqlalchemy.orm import Session
 from app.alumnos.models import Alumno
-from app.auditorias.models import Observacion
+from app.auditorias.models import Auditoria, Observacion
 from app.auditorias.service import registrar_auditoria
 from app.auth.models import Usuario
 from app.catalogos.models import Carrera, Convocatoria, TipoDocumento
@@ -51,3 +51,28 @@ def test_aprobacion_total(solicitud_en_auditoria, db: Session):
     assert sol.estado == "DOCUMENTACION_APROBADA"
     assert db.get(Documento, doc.id).estado == "APROBADO"
     assert eventos == ["DOCUMENTACION_APROBADA"]
+
+
+def test_motivo_none_y_documento_inexistente_no_mutantan(solicitud_en_auditoria,
+                                                         db: Session):
+    sol, doc, auditor_id = solicitud_en_auditoria
+    with pytest.raises(ValueError, match="motivo obligatorio"):
+        registrar_auditoria(db, sol.id, auditor_id,
+                            [{"documento_id": doc.id, "resultado": "OBSERVADO",
+                              "motivo": None}])
+    with pytest.raises(ValueError, match="no pertenece"):
+        registrar_auditoria(db, sol.id, auditor_id,
+                            [{"documento_id": 999999, "resultado": "APROBADO"}])
+    assert db.query(Auditoria).count() == 0
+    assert db.query(Observacion).count() == 0
+    assert db.get(Documento, doc.id).estado == "EN_REVISION"
+
+
+def test_rechaza_documento_duplicado(solicitud_en_auditoria, db: Session):
+    sol, doc, auditor_id = solicitud_en_auditoria
+    with pytest.raises(ValueError, match="duplicado"):
+        registrar_auditoria(db, sol.id, auditor_id, [
+            {"documento_id": doc.id, "resultado": "OBSERVADO", "motivo": "a"},
+            {"documento_id": doc.id, "resultado": "APROBADO"},
+        ])
+    assert db.query(Observacion).count() == 0

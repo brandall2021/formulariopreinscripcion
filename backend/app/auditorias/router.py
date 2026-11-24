@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from app.auditorias.models import Auditoria, Observacion
+from app.auditorias.models import Observacion
 from app.auditorias.service import registrar_auditoria
 from app.auth.models import Usuario
 from app.documentos.models import Documento, DocumentoVersion
