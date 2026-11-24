@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 import re
+import time
 import jwt
 import pytest
 from sqlalchemy.orm import Session
@@ -33,7 +34,7 @@ def test_otp_ciclo_completo(db: Session, monkeypatch):
     token = verify_otp(db, "ana@example.com", code)
     payload = jwt.decode(token, get_settings().secret_key, algorithms=["HS256"])
     assert payload["sub"] == "ana@example.com"
-    assert payload["exp"] > datetime.utcnow().timestamp()
+    assert time.time() < payload["exp"] <= time.time() + 3600 + 5
 
 
 def test_otp_rechaza_codigo_incorrecto_y_normaliza_email(db: Session, monkeypatch):
@@ -83,7 +84,7 @@ def test_login_admin_valida_rol_clave_y_estado(db: Session):
     db.commit()
     token = authenticate_admin(db, " ADMIN@FACE.UNT.EDU.AR ", "clave-secreta")
     payload = jwt.decode(token, get_settings().secret_key, algorithms=["HS256"])
-    assert payload["rol"] == "admin" and payload["exp"] > datetime.utcnow().timestamp()
+    assert payload["rol"] == "admin" and time.time() < payload["exp"] <= time.time() + 8 * 3600 + 5
     with pytest.raises(ValueError, match="credenciales inválidas"):
         authenticate_admin(db, "admin@face.unt.edu.ar", "clave-mala")
     with pytest.raises(ValueError, match="credenciales inválidas"):

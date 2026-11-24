@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import secrets
+import time
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 import jwt
@@ -39,7 +40,7 @@ def verify_otp(db: Session, email: str, code: str) -> str:
     row.usado_en = datetime.utcnow()
     db.commit()
     s = get_settings()
-    exp = int(datetime.utcnow().timestamp()) + OTP_SESSION_TTL_SECONDS
+    exp = int(time.time()) + OTP_SESSION_TTL_SECONDS
     return jwt.encode({"sub": email, "exp": exp}, s.secret_key, algorithm="HS256")
 
 def authenticate_admin(db: Session, email: str, password: str) -> str:
@@ -48,6 +49,6 @@ def authenticate_admin(db: Session, email: str, password: str) -> str:
     if user is None or user.rol != "admin" or not crypt.verify(password, user.password_hash):
         raise ValueError("credenciales inválidas")
     s = get_settings()
-    exp = int(datetime.utcnow().timestamp()) + ADMIN_TOKEN_TTL_SECONDS
+    exp = int(time.time()) + ADMIN_TOKEN_TTL_SECONDS
     return jwt.encode({"sub": email, "rol": user.rol, "exp": exp},
                       s.secret_key, algorithm="HS256")
