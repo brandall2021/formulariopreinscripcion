@@ -3,8 +3,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.alumnos.models import Alumno
+from app.auth.models import Usuario
 from app.catalogos.models import Carrera, Convocatoria, TipoDocumento
+from app.auditorias.models import Auditoria, Observacion
+from app.consentimientos.models import Consentimiento
 from app.documentos.models import Documento, DocumentoVersion
+from app.historial.models import HistorialEstado
 from app.notificaciones.models import Notificacion
 from app.solicitudes.models import Solicitud
 from app.solicitudes.state import InvalidTransition, transition
@@ -91,10 +95,59 @@ def test_idempotency_notificaciones(db: Session):
     key = "obs|email|1|dni"
     db.add(Notificacion(solicitud_id=sol.id, evento="OBSERVADA", canal="email",
                         destinatario="pedro@example.com", estado="PENDIENTE",
+                        asunto="Observaciones", cuerpo="Revisar DNI",
                         idempotency_key=key))
     db.add(Notificacion(solicitud_id=sol.id, evento="OBSERVADA", canal="email",
                         destinatario="pedro@example.com", estado="PENDIENTE",
+                        asunto="Observaciones", cuerpo="Revisar DNI",
                         idempotency_key=key))
     with pytest.raises(IntegrityError):
         db.flush()
     db.rollback()
+
+
+def test_modelos_secundarios_y_caso_feliz(db: Session):
+    conv = Convocatoria(nombre="2026-caso", anio=2026, activa=True)
+    carrera = Carrera(nombre="Administración", codigo="CASO", activa=True)
+    alumno = Alumno(apellido="Díaz", nombres="Luis", dni="35123456",
+                    email="caso@example.com", celular="+5493815555558")
+    td = TipoDocumento(codigo="dni-caso", nombre="DNI")
+    auditor = Usuario(email="auditor-caso@example.com", password_hash="x",
+                      rol="auditor", activo=True)
+    db.add_all([conv, carrera, alumno, td, auditor])
+    db.flush()
+    sol = Solicitud(numero="FACE-2026-00005", alumno_id=alumno.id,
+                    convocatoria_id=conv.id, carrera_id=carrera.id,
+                    tipo_ingresante="nuevo", dni=alumno.dni, estado="BORRADOR")
+    db.add(sol)
+    db.flush()
+    doc = Documento(solicitud_id=sol.id, tipo_documento_id=td.id, estado="PENDIENTE")
+    db.add(doc)
+    db.flush()
+    db.add_all([
+        DocumentoVersion(documento_id=doc.id, numero=1, object_key="s/1/dni/v1.pdf",
+                         mime="application/pdf", bytes=10, checksum="a",
+                         creado_por="alumno@example.com"),
+        DocumentoVersion(documento_id=doc.id, numero=2, object_key="s/1/dni/v2.pdf",
+                         mime="application/pdf", bytes=10, checksum="b",
+                         creado_por="alumno@example.com"),
+    ])
+    audit = Auditoria(solicitud_id=sol.id, auditor_id=auditor.id,
+                      resultado="OBSERVADO")
+    db.add(audit)
+    db.flush()
+    db.add_all([
+        Observacion(auditoria_id=audit.id, documento_id=doc.id, motivo="Ilegible"),
+        HistorialEstado(solicitud_id=sol.id, estado_anterior="BORRADOR",
+                        estado_nuevo="RECIBIDA", actor="alumno"),
+        Consentimiento(alumno_id=alumno.id, canal="whatsapp", aceptado=True),
+        Notificacion(solicitud_id=sol.id, evento="OBSERVADA", canal="email",
+                     destinatario="caso@example.com", estado="PENDIENTE",
+                     asunto="Observaciones", cuerpo="Revisar DNI",
+                     idempotency_key="otra|email|1|dni"),
+    ])
+    db.commit()
+    assert db.query(DocumentoVersion).filter_by(documento_id=doc.id).count() == 2
+    assert db.query(Observacion).filter_by(auditoria_id=audit.id).count() == 1
+    assert db.query(HistorialEstado).filter_by(solicitud_id=sol.id).count() == 1
+    assert db.query(Consentimiento).filter_by(alumno_id=alumno.id).count() == 1
