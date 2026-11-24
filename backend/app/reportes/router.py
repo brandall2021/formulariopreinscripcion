@@ -53,5 +53,8 @@ def rechazar(solicitud_id: int, data: CierreIn, db: Session = Depends(get_db)):
         raise HTTPException(404, "solicitud no encontrada")
     if not data.motivo:
         raise HTTPException(422, "motivo obligatorio para rechazar")
-    registrar_transicion(db, sol, "RECHAZADA", data.actor, data.motivo)
+    try:
+        registrar_transicion(db, sol, "RECHAZADA", data.actor, data.motivo)
+    except InvalidTransition as exc:
+        raise HTTPException(409, str(exc)) from exc
     return {"estado": sol.estado}

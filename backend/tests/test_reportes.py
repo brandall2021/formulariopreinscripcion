@@ -50,3 +50,30 @@ def test_cierre_administrativo(db: Session):
                             json={"actor": "admin"})
     assert respuesta.status_code == 200
     assert respuesta.json()["estado"] == "FINALIZADA"
+
+
+def test_rechazo_valida_motivo_y_estado_terminal(db: Session):
+    conv = Convocatoria(nombre="2026-rechazo", anio=2026, activa=True)
+    car = Carrera(nombre="Economía", codigo="ECORCH", activa=True)
+    alumno = Alumno(apellido="López", nombres="Luis", dni="33123456",
+                    email="luis-rechazo@example.com", celular="+5493815555555")
+    db.add_all([conv, car, alumno])
+    db.flush()
+    sol = Solicitud(numero="FACE-2026-90007", alumno_id=alumno.id,
+                    convocatoria_id=conv.id, carrera_id=car.id,
+                    tipo_ingresante="nuevo", dni=alumno.dni, estado="RECIBIDA")
+    db.add(sol)
+    db.commit()
+    app = FastAPI()
+    app.include_router(admin_router)
+    app.dependency_overrides[get_db] = lambda: db
+    client = TestClient(app)
+    url = f"/admin/solicitudes/{sol.id}/rechazar"
+    assert client.post(url, json={"actor": "admin"}).status_code == 422
+    respuesta = client.post(url, json={"actor": "admin",
+                                       "motivo": "Documentación incompleta"})
+    assert respuesta.status_code == 200
+    assert respuesta.json()["estado"] == "RECHAZADA"
+    # Un segundo rechazo sobre el estado terminal debe ser 409, no 500.
+    segundo = client.post(url, json={"actor": "admin", "motivo": "reintento"})
+    assert segundo.status_code == 409
