@@ -1,4 +1,6 @@
+from passlib.context import CryptContext
 from sqlalchemy.orm import Session
+from app.auth.models import Usuario
 from app.catalogos.models import Carrera, Convocatoria, RequisitoDocumental, TipoDocumento
 
 TIPOS = [
@@ -10,6 +12,17 @@ TIPOS = [
     ("comprobante_pago", "Comprobante de pago", "Imagen o PDF legible"),
 ]
 CARRERAS = [("Contador Público", "CP"), ("Economía", "ECO"), ("Administración", "ADM")]
+
+def seed_usuarios(db: Session) -> None:
+    crypt = CryptContext(schemes=["bcrypt"])
+    for email, rol, password in (
+        ("auditor@face.unt.edu.ar", "auditor", "auditor-local"),
+        ("admin@face.unt.edu.ar", "admin", "admin-local"),
+    ):
+        if db.query(Usuario).filter_by(email=email).first() is None:
+            db.add(Usuario(email=email, password_hash=crypt.hash(password),
+                           rol=rol, activo=True))
+    db.commit()
 
 def seed_catalogos(db: Session) -> None:
     # El guard es específico de la convocatoria semilla: si ya existe otra

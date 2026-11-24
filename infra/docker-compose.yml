@@ -25,6 +25,7 @@ services:
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_API_CORS_ALLOW_ORIGIN: http://localhost:4200
     ports: ["9000:9000", "9001:9001"]
     volumes: [miniodata:/data]
     healthcheck:
@@ -37,6 +38,48 @@ services:
   mailpit:
     image: axllent/mailpit:v1.21
     ports: ["1025:1025", "8025:8025"]
+  api:
+    build: ../backend
+    command: >-
+      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://face:face@postgres:5432/face
+      MINIO_ENDPOINT: minio:9000
+      REDIS_URL: redis://redis:6379/0
+      SMTP_HOST: mailpit
+    ports: ["8000:8000"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      mailpit:
+        condition: service_started
+  worker:
+    build: ../backend
+    command: celery -A app.infra.celery_app:celery_app worker --loglevel=info
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://face:face@postgres:5432/face
+      MINIO_ENDPOINT: minio:9000
+      REDIS_URL: redis://redis:6379/0
+      SMTP_HOST: mailpit
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      mailpit:
+        condition: service_started
+  frontend:
+    build: ../frontend
+    ports: ["4200:80"]
+    depends_on: [api]
 volumes:
   pgdata:
   pgtestdata:

@@ -9,5 +9,9 @@ export const routes: Routes = [
   { path: 'portal/seguimiento/:id', loadComponent: () =>
       import('./portal/seguimiento/seguimiento.component')
         .then(m => m.SeguimientoComponent) },
+  { path: 'auditoria', loadComponent: () =>
+      import('./auditoria/panel/panel.component').then(m => m.PanelComponent) },
+  { path: 'admin', loadComponent: () =>
+      import('./admin/dashboard/dashboard.component').then(m => m.DashboardComponent) },
   { path: '', pathMatch: 'full', redirectTo: 'portal/datos' },
 ];
