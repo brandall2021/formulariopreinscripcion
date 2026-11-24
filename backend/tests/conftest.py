@@ -14,6 +14,11 @@ def test_engine():
 
 @pytest.fixture
 def db(test_engine):
+    # Los tests hacen commit, así que limpiamos filas entre casos para que
+    # las aserciones de conteo y los `.one()` no vean datos de otros módulos.
+    with test_engine.begin() as conn:
+        for table in reversed(Base.metadata.sorted_tables):
+            conn.execute(table.delete())
     testing_session = sessionmaker(bind=test_engine, expire_on_commit=False)
     with testing_session() as session:
         yield session
