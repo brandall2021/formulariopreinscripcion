@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     smtp_host: str = "localhost"
     smtp_port: int = 1025
-    secret_key: str = "dev-secret-change-me"
+    secret_key: str = "dev-secret-change-me-please-use-32-bytes-minimum"
     otp_ttl_seconds: int = 600
     otp_max_intentos: int = 5
     upload_url_ttl: int = 900
