@@ -9,4 +9,5 @@ var/
 .venv/
 .env
 infra/.env
+*.env
 *.egg-info/
