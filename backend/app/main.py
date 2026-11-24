@@ -1,9 +1,11 @@
 from app import alumnos, auditorias, auth, catalogos, consentimientos, documentos, historial, notificaciones, solicitudes  # noqa: F401
+from app.auditorias.router import router as auditorias_router
 from app.auth.router import router as auth_router
 from app.catalogos.router import router as catalogos_router
 from app.catalogos.seed import seed_catalogos
 from app.documentos.router import router as documentos_router
 from app.infra.db import SessionLocal
+from app.notificaciones.router import router as consentimientos_router
 from app.solicitudes.router import router as solicitudes_router
 from fastapi import FastAPI
 app = FastAPI(title="FACE Preinscripción API")
@@ -11,6 +13,8 @@ app.include_router(auth_router)
 app.include_router(catalogos_router)
 app.include_router(documentos_router)
 app.include_router(solicitudes_router)
+app.include_router(auditorias_router)
+app.include_router(consentimientos_router)
 
 @app.on_event("startup")
 def startup_seed():

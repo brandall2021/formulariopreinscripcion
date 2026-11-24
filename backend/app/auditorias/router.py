@@ -8,6 +8,7 @@ from app.documentos.models import Documento, DocumentoVersion
 from app.infra.db import get_db
 from app.notificaciones.events import publicar_evento
 from app.solicitudes.models import Solicitud
+from worker.tasks import enviar_notificacion
 
 router = APIRouter(prefix="/auditorias", tags=["auditorias"])
 
@@ -53,6 +54,6 @@ def auditar(solicitud_id: int, data: AuditoriaIn, db: Session = Depends(get_db))
             [d.model_dump() for d in data.decisiones],
             on_event=lambda evento, datos: publicar_evento(
                 db, solicitud_id, evento, datos,
-                on_enqueue=lambda nid: None))
+                on_enqueue=lambda nid: enviar_notificacion.delay(nid)))
     except ValueError as exc:
         raise HTTPException(409, str(exc)) from exc
