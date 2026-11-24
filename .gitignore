@@ -1,0 +1,9 @@
+.worktrees/
+.superpowers/
+__pycache__/
+*.pyc
+.pytest_cache/
+node_modules/
+dist/
+var/
+.venv/
