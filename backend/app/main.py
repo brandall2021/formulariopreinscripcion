@@ -6,6 +6,7 @@ from app.catalogos.seed import seed_catalogos
 from app.documentos.router import router as documentos_router
 from app.infra.db import SessionLocal
 from app.notificaciones.router import router as consentimientos_router
+from app.reportes.router import router as reportes_router, admin_router
 from app.solicitudes.router import router as solicitudes_router
 from fastapi import FastAPI
 app = FastAPI(title="FACE Preinscripción API")
@@ -15,6 +16,8 @@ app.include_router(documentos_router)
 app.include_router(solicitudes_router)
 app.include_router(auditorias_router)
 app.include_router(consentimientos_router)
+app.include_router(reportes_router)
+app.include_router(admin_router)
 
 @app.on_event("startup")
 def startup_seed():
