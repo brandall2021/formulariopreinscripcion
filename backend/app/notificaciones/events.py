@@ -25,16 +25,25 @@ def publicar_evento(db: Session, solicitud_id: int, evento: str,
     for canal in canales:
         payload = json.dumps({"evento": evento, "asunto": asunto, "cuerpo": cuerpo},
                              sort_keys=True)
-        key = hashlib.sha256(f"{evento}|{canal}|{payload}".encode()).hexdigest()[:64]
+        # Solicitud y versión distinguen dos auditorías con el mismo motivo:
+        # cada transición incrementa `version`, así que una observación nueva
+        # no se suprime por una anterior idéntica.
+        version = sol.version if sol else 0
+        key = hashlib.sha256(
+            f"{solicitud_id}|{version}|{evento}|{canal}|{payload}".encode()
+        ).hexdigest()[:64]
         row = db.query(Notificacion).filter_by(idempotency_key=key).one_or_none()
         if row is None:
+            if canal == "email":
+                destinatario = alumno.email if alumno else "desconocido@face"
+            else:
+                destinatario = (alumno.celular or alumno.email) if alumno else "desconocido"
             row = Notificacion(solicitud_id=solicitud_id, evento=evento, canal=canal,
-                               destinatario=alumno.email if alumno else "desconocido@face",
-                               estado="PENDIENTE", asunto=asunto, cuerpo=cuerpo,
-                               idempotency_key=key)
+                               destinatario=destinatario, estado="PENDIENTE",
+                               asunto=asunto, cuerpo=cuerpo, idempotency_key=key)
             db.add(row)
             db.commit()
+            if on_enqueue is not None:
+                on_enqueue(row.id)
         ids.append(row.id)
-        if on_enqueue is not None:
-            on_enqueue(row.id)
     return ids
