@@ -1,4 +1,5 @@
-from sqlalchemy import func, text
+import logging
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 from app.alumnos.models import Alumno
 from app.catalogos.models import Convocatoria, RequisitoDocumental
@@ -7,24 +8,24 @@ from app.historial.models import HistorialEstado
 from app.solicitudes.models import Solicitud
 from app.solicitudes.state import transition
 
-class VersioObsoleta(Exception):
-    pass
+logger = logging.getLogger(__name__)
 
 def _siguiente_numero(db: Session, anio: int, convocatoria_id: int) -> str:
-    if not db.execute(text("SELECT to_regclass('solicitud_numero_seq')")).scalar():
-        db.execute(text("CREATE SEQUENCE solicitud_numero_seq START 1"))
-        db.commit()
+    db.execute(text("CREATE SEQUENCE IF NOT EXISTS solicitud_numero_seq START 1"))
     n = db.execute(text("SELECT nextval('solicitud_numero_seq')")).scalar()
     return f"FACE-{anio}-{n:05d}"
 
 def registrar_transicion(db: Session, sol: Solicitud, nuevo: str,
-                         actor: str, motivo: str | None = None) -> Solicitud:
+                         actor: str, motivo: str | None = None,
+                         commit: bool = True) -> Solicitud:
     anterior = sol.estado
-    sol.estado = transition(anterior, nuevo)
+    estado_final = transition(anterior, nuevo)
+    sol.estado = estado_final
     sol.version += 1
     db.add(HistorialEstado(solicitud_id=sol.id, estado_anterior=anterior,
-                           estado_nuevo=nuevo, actor=actor, motivo=motivo))
-    db.commit()
+                           estado_nuevo=estado_final, actor=actor, motivo=motivo))
+    if commit:
+        db.commit()
     return sol
 
 def crear_borrador(db: Session, email: str, data: dict) -> Solicitud:
@@ -48,9 +49,16 @@ def crear_borrador(db: Session, email: str, data: dict) -> Solicitud:
 
 def confirmar(db: Session, solicitud_id: int, version: int,
               on_confirm=None) -> Solicitud:
-    sol = db.get(Solicitud, solicitud_id)
+    # Un solo bloqueo y un solo commit: número, estado e historial se
+    # persisten juntos. La segunda confirmación (reintento/doble click)
+    # se rechaza antes de consumir otro número de la secuencia.
+    sol = db.execute(
+        select(Solicitud).where(Solicitud.id == solicitud_id).with_for_update()
+    ).scalar_one_or_none()
     if sol is None:
         raise ValueError("solicitud no encontrada")
+    if sol.estado != "BORRADOR":
+        raise ValueError("solicitud no confirmable")
     if sol.version != version:
         raise ValueError("versión obsoleta")
     requisitos = db.query(RequisitoDocumental).filter_by(
@@ -63,8 +71,13 @@ def confirmar(db: Session, solicitud_id: int, version: int,
         raise ValueError(f"requisitos pendientes: {sorted(ids - cargados)}")
     conv = db.get(Convocatoria, sol.convocatoria_id)
     sol.numero = _siguiente_numero(db, conv.anio, conv.id)
+    sol = registrar_transicion(db, sol, "RECIBIDA", "alumno", commit=False)
     db.commit()
-    sol = registrar_transicion(db, sol, "RECIBIDA", "alumno")
     if on_confirm is not None:
-        on_confirm(sol.id)
+        try:
+            on_confirm(sol.id)
+        except Exception:
+            # La presentación ya quedó persistida: un fallo del broker
+            # no debe devolver 500 ni invitar a reintentar el confirmar.
+            logger.exception("no se pudo encolar la validación de %s", sol.id)
     return sol

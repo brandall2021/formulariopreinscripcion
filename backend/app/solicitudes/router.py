@@ -5,6 +5,7 @@ from app.alumnos.models import Alumno
 from app.infra.db import get_db
 from app.solicitudes import service
 from app.solicitudes.models import Solicitud
+from app.solicitudes.schemas import ConfirmacionOut, SolicitudOut
 
 router = APIRouter(prefix="/solicitudes", tags=["solicitudes"])
 
@@ -24,11 +25,11 @@ class SolicitudIn(BaseModel):
 class ConfirmarIn(BaseModel):
     version: int
 
-@router.post("")
+@router.post("", response_model=SolicitudOut)
 def crear(data: SolicitudIn, db: Session = Depends(get_db)):
     return service.crear_borrador(db, data.email, data.model_dump())
 
-@router.get("/mia")
+@router.get("/mia", response_model=SolicitudOut)
 def mia(email: EmailStr, db: Session = Depends(get_db)):
     sol = (db.query(Solicitud).join(Alumno)
            .filter(Alumno.email == email).order_by(Solicitud.id.desc()).first())
@@ -36,14 +37,14 @@ def mia(email: EmailStr, db: Session = Depends(get_db)):
         raise HTTPException(404, "solicitud no encontrada")
     return sol
 
-@router.get("/{solicitud_id}")
+@router.get("/{solicitud_id}", response_model=SolicitudOut)
 def obtener(solicitud_id: int, db: Session = Depends(get_db)):
     sol = db.get(Solicitud, solicitud_id)
     if sol is None:
         raise HTTPException(404, "solicitud no encontrada")
     return sol
 
-@router.post("/{solicitud_id}/confirmar")
+@router.post("/{solicitud_id}/confirmar", response_model=ConfirmacionOut)
 def confirmar(solicitud_id: int, data: ConfirmarIn, db: Session = Depends(get_db)):
     try:
         sol = service.confirmar(db, solicitud_id, data.version)

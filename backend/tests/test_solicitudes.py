@@ -1,8 +1,14 @@
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 from app.alumnos.models import Alumno
-from app.catalogos.models import Carrera, Convocatoria
+from app.catalogos.models import Carrera, Convocatoria, RequisitoDocumental
 from app.catalogos.seed import seed_catalogos
+from app.documentos.models import Documento
+from app.historial.models import HistorialEstado
+from app.infra.db import get_db
+from app.solicitudes.router import router as solicitudes_router
 from app.solicitudes.service import crear_borrador, confirmar
 
 
@@ -50,3 +56,53 @@ def test_rechaza_version_obsoleta(db: Session):
     sol = crear_borrador(db, "pedro@example.com", payload)
     with pytest.raises(ValueError, match="versión obsoleta"):
         confirmar(db, sol.id, sol.version + 1)
+
+
+def _borrador_con_requisitos(db: Session, dni: str, email: str):
+    seed_catalogos(db)
+    db.add(Alumno(apellido="Éxito", nombres="Ana", dni=dni,
+                  email=email, celular="+5493815555559"))
+    db.commit()
+    ids = _ids(db)
+    sol = crear_borrador(db, email, {
+        "apellido": "Éxito", "nombres": "Ana", "dni": dni, "email": email,
+        "celular": "+5493815555559", **ids, "tipo_ingresante": "nuevo"})
+    requisitos = db.query(RequisitoDocumental).filter_by(
+        convocatoria_id=ids["convocatoria_id"], carrera_id=ids["carrera_id"],
+        tipo_ingresante="nuevo").all()
+    db.add_all(Documento(solicitud_id=sol.id,
+                         tipo_documento_id=r.tipo_documento_id,
+                         estado="RECIBIDO") for r in requisitos)
+    db.commit()
+    return sol
+
+
+def test_confirmacion_exitosa_genera_numero_e_historial(db: Session):
+    sol = _borrador_con_requisitos(db, "36123456", "exito@example.com")
+    llamados = []
+    confirmada = confirmar(db, sol.id, sol.version, on_confirm=llamados.append)
+    assert confirmada.estado == "RECIBIDA"
+    assert confirmada.numero.startswith("FACE-2026-") and len(confirmada.numero) == 15
+    assert llamados == [sol.id]
+    hist = db.query(HistorialEstado).filter_by(solicitud_id=sol.id).one()
+    assert hist.estado_anterior == "BORRADOR" and hist.estado_nuevo == "RECIBIDA"
+
+
+def test_rechaza_confirmacion_duplicada(db: Session):
+    sol = _borrador_con_requisitos(db, "37123456", "dup@example.com")
+    primera = confirmar(db, sol.id, sol.version)
+    with pytest.raises(ValueError, match="solicitud no confirmable"):
+        confirmar(db, sol.id, primera.version)
+    assert db.query(HistorialEstado).filter_by(solicitud_id=sol.id).count() == 1
+
+
+def test_endpoint_confirmar_409_y_404(db: Session):
+    sol = _borrador_con_requisitos(db, "38123456", "http@example.com")
+    app = FastAPI()
+    app.include_router(solicitudes_router)
+    app.dependency_overrides[get_db] = lambda: db
+    client = TestClient(app)
+    assert client.get("/solicitudes/999999").status_code == 404
+    respuesta = client.post(f"/solicitudes/{sol.id}/confirmar",
+                            json={"version": sol.version + 1})
+    assert respuesta.status_code == 409
