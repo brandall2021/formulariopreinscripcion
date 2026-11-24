@@ -6,6 +6,7 @@ from app.infra.db import get_db
 from app.solicitudes import service
 from app.solicitudes.models import Solicitud
 from app.solicitudes.schemas import ConfirmacionOut, SolicitudOut
+from worker.tasks import validar_documentos_solicitud
 
 router = APIRouter(prefix="/solicitudes", tags=["solicitudes"])
 
@@ -47,7 +48,8 @@ def obtener(solicitud_id: int, db: Session = Depends(get_db)):
 @router.post("/{solicitud_id}/confirmar", response_model=ConfirmacionOut)
 def confirmar(solicitud_id: int, data: ConfirmarIn, db: Session = Depends(get_db)):
     try:
-        sol = service.confirmar(db, solicitud_id, data.version)
+        sol = service.confirmar(db, solicitud_id, data.version,
+                                on_confirm=validar_documentos_solicitud.delay)
     except ValueError as exc:
         raise HTTPException(409, str(exc)) from exc
     return {"numero": sol.numero, "fecha": sol.updated_at,

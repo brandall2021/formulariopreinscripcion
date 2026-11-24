@@ -2,12 +2,14 @@ from app import alumnos, auditorias, auth, catalogos, consentimientos, documento
 from app.auth.router import router as auth_router
 from app.catalogos.router import router as catalogos_router
 from app.catalogos.seed import seed_catalogos
+from app.documentos.router import router as documentos_router
 from app.infra.db import SessionLocal
 from app.solicitudes.router import router as solicitudes_router
 from fastapi import FastAPI
 app = FastAPI(title="FACE Preinscripción API")
 app.include_router(auth_router)
 app.include_router(catalogos_router)
+app.include_router(documentos_router)
 app.include_router(solicitudes_router)
 
 @app.on_event("startup")
