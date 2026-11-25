@@ -213,13 +213,13 @@ cd frontend && npm run build
 docker compose -f infra/docker-compose.yml config --quiet
 ```
 
-Resultado de verificación reciente: backend **47 passed**, `npm run build` OK, compose config OK y E2E completo ejecutado contra el deploy de Dokploy (alta de solicitud, carga de documentos, validación, auditoría y notificación enviada).
+Resultado de verificación reciente: backend **49 passed**, `npm run build` OK, compose config OK y E2E completo ejecutado contra el deploy de Dokploy (alta de solicitud, carga de documentos, validación, auditoría, subsanación/reauditoría y notificaciones enviadas).
 
 ## Lo que falta
 
 ### Estado verificado (2026-11-25)
 
-- Backend: **47 passed** (`pytest -q`), incluyendo pruebas de autorización API.
+- Backend: **49 passed** (`pytest -q`), incluyendo pruebas de autorización API y readiness.
 - Frontend: `npm run build` OK.
 - E2E sobre el deploy Dokploy: OTP alumno → borrador → 6 documentos a MinIO → confirmación (`FACE-2026-00001`) → validación worker → auditoría completa → `DOCUMENTACION_APROBADA` → notificación `ENVIADA`.
 - Auth: alumno por OTP; admin/auditor por JWT. El backend deriva la identidad del auditor desde el token y ya no confía en `auditor_id` enviado por el cliente.
