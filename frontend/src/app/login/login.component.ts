@@ -8,21 +8,41 @@ import { AuthService } from '../core/auth.service';
   selector: 'app-login',
   standalone: true,
   imports: [ReactiveFormsModule],
+  styles: [`
+    .intro { background: white; border-bottom: 1px solid var(--line); }
+    .intro-inner, .login-content { width: min(100%, 1152px); margin-inline: auto;
+      padding-inline: clamp(16px, 3vw, 24px); }
+    .intro-inner { padding-block: clamp(32px, 5vw, 48px); }
+    .intro p { margin: 0; }
+    .institution { color: #bd0814; font-size: .875rem; font-weight: 650; }
+    h1 { margin-block: 12px; }
+    .login-content { display: grid; gap: 16px; padding-top: 32px; }
+    form { max-width: 560px; }
+  `],
   template: `
-    <h1>Ingreso por correo</h1>
-    <p>Te enviaremos un código OTP para continuar tu preinscripción.</p>
+    <div class="intro">
+      <div class="intro-inner">
+        <p class="institution">Facultad de Ciencias Económicas - UNT</p>
+        <h1>Formulario de preinscripción</h1>
+        <p>Ingresá tu correo para iniciar o continuar el trámite.</p>
+      </div>
+    </div>
+    <div class="login-content">
+
     <form [formGroup]="emailForm" (ngSubmit)="requestOtp()">
-      <label>Correo <input formControlName="email" type="email"></label>
+      <h2>Ingreso por correo</h2>
+      <label>Correo electrónico <input formControlName="email" type="email" autocomplete="email"></label>
       <button type="submit" [disabled]="emailForm.invalid || loading">Enviar código</button>
     </form>
 
     @if (sent) {
       <form [formGroup]="codeForm" (ngSubmit)="verifyOtp()">
-        <label>Código <input formControlName="code" maxlength="6"></label>
+        <label>Código <input formControlName="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6"></label>
         <button type="submit" [disabled]="codeForm.invalid || loading">Ingresar</button>
       </form>
     }
     @if (error) { <p class="error">{{ error }}</p> }
+    </div>
   `,
 })
 export class LoginComponent {

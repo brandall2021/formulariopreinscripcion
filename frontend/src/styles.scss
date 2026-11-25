@@ -1,25 +1,32 @@
 :root {
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   color: #172033;
-  background: #f4f7fb;
-  --navy: #12304a; --blue: #1769aa; --ink: #172033; --muted: #5d6b7e;
-  --line: #dce4ee; --surface: #fff; --success: #16794c; --danger: #b42318;
-  --radius: 16px; --shadow: 0 12px 30px rgba(18, 48, 74, .08);
+  background: #f8fafc;
+  --navy: #1f3763; --blue: #1f3763; --ink: #172033; --muted: #5d6b7e;
+  --red: #e30613; --gold: #d9a928; --line: #e5e7eb; --surface: #fff; --success: #16794c; --danger: #b42318;
+  --radius: 6px; --shadow: 0 1px 2px rgba(15, 23, 42, .08);
 }
 * { box-sizing: border-box; }
-body { margin: 0; min-width: 320px; background: #f4f7fb; }
+body { margin: 0; min-width: 320px; background: #f8fafc; }
 button, input, select, textarea { font: inherit; }
 a { color: var(--blue); }
 :focus-visible { outline: 3px solid #f5b942; outline-offset: 3px; }
-.site-header { min-height: 72px; display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 12px clamp(16px, 5vw, 72px); background: var(--navy); color: white; }
-.brand { display: inline-flex; align-items: center; gap: 10px; color: white; text-decoration: none; }
-.brand-mark { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 11px; background: linear-gradient(135deg, #43c6d4, #1769aa); font-size: 1.35rem; font-weight: 800; }
-.brand strong, .brand small { display: block; line-height: 1.1; }
-.brand small { margin-top: 3px; color: #b9d1e3; font-size: .72rem; }
+app-root { display: flex; min-height: 100dvh; flex-direction: column; }
+.site-header, .site-footer { border-top: 8px solid var(--red); background: var(--navy); }
+.site-header-inner, .site-footer-inner {
+  width: min(100%, 1152px);
+  margin-inline: auto;
+  padding: 24px clamp(16px, 3vw, 24px);
+}
+.site-header-inner { display: flex; align-items: center; justify-content: space-between; gap: 32px; }
+.brand { min-width: 0; display: inline-flex; }
+.brand img { display: block; width: min(420px, 100%); height: auto; }
+.admin-link { color: #fff; font-size: .875rem; font-weight: 600; text-decoration: none; }
+.admin-link:hover, nav a:hover { color: var(--gold); }
 nav { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; }
 nav a { color: #e5f3fb; text-decoration: none; font-size: .92rem; }
 .page-shell { width: min(1120px, calc(100% - 32px)); margin: 32px auto 64px; }
-.site-footer { padding: 18px; color: var(--muted); text-align: center; font-size: .82rem; }
+.site-footer { margin-top: auto; color: #e1e7f0; font-size: .875rem; }
 form, article, section, .card, .dashboard-grid { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
 form, article, section, .card { padding: clamp(18px, 3vw, 30px); }
 h1 { margin: 0 0 10px; color: var(--navy); font-size: clamp(1.65rem, 3vw, 2.3rem); }
@@ -39,8 +46,22 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 .stack { display: grid; gap: 18px; }
 .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 @media (max-width: 680px) {
-  .site-header { align-items: flex-start; flex-direction: column; }
-  nav { width: 100%; }
+  app-root { display: flex; min-height: 100dvh; flex-direction: column; }
+.site-header, .site-footer { border-top: 8px solid var(--red); background: var(--navy); }
+.site-header-inner, .site-footer-inner {
+  width: min(100%, 1152px);
+  margin-inline: auto;
+  padding: 24px clamp(16px, 3vw, 24px);
+}
+.site-header-inner { display: flex; align-items: center; justify-content: space-between; gap: 32px; }
+.brand { min-width: 0; display: inline-flex; }
+.brand img { display: block; width: min(420px, 100%); height: auto; }
+.admin-link { color: #fff; font-size: .875rem; font-weight: 600; text-decoration: none; }
+.admin-link:hover, nav a:hover { color: var(--gold); }
+nav { width: 100%; }
   .page-shell { width: min(100% - 20px, 1120px); margin-top: 20px; }
   .grid-2 { grid-template-columns: 1fr; }
 }
+
+.site-footer address { margin-top: 6px; font-style: normal; line-height: 1.55; }
+.page-shell:has(app-login) { width: 100%; margin: 0 auto 48px; }

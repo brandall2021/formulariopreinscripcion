@@ -1,7 +1,8 @@
 <header class="site-header">
-  <a class="brand" routerLink="/" aria-label="FACE, inicio">
-    <span class="brand-mark" aria-hidden="true">F</span>
-    <span><strong>FACE</strong><small>Preinscripciones</small></span>
+  <div class="site-header-inner">
+  <a class="brand" routerLink="/" aria-label="Preinscripciones FACE UNT, inicio">
+    <img src="logo-header-dark.png" width="1046" height="190"
+         alt="Universidad Nacional de Tucumán — Facultad de Ciencias Económicas">
   </a>
   @if (loggedIn) {
     <nav aria-label="Navegación principal">
@@ -10,7 +11,15 @@
       @if (role === 'admin') { <a routerLink="/admin">Dashboard</a> }
       <button class="button button-ghost button-small" type="button" (click)="logout()">Salir</button>
     </nav>
+  } @else {
+    <a class="admin-link" routerLink="/login/admin">Acceso administrativo</a>
   }
+  </div>
 </header>
 <main class="page-shell"><router-outlet /></main>
-<footer class="site-footer">Facultad de Ciencias Económicas · UNT</footer>
+<footer class="site-footer">
+  <div class="site-footer-inner">
+    <strong>Facultad de Ciencias Económicas</strong>
+    <address>Av. Independencia 1900<br>San Miguel de Tucumán, Argentina · T4000</address>
+  </div>
+</footer>
