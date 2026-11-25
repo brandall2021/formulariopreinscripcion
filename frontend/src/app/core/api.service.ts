@@ -13,6 +13,10 @@ export class ApiService {
     return this.http.get<T>(`${this.base}${path}`, { params: query });
   }
 
+  descargar(path: string) {
+    return this.http.get(`${this.base}${path}`, { responseType: 'blob' });
+  }
+
   post<T>(path: string, body: unknown) {
     return this.http.post<T>(`${this.base}${path}`, body);
   }

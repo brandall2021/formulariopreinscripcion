@@ -1,6 +1,8 @@
 import hashlib
 import logging
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi.responses import Response
+from minio.error import S3Error
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -85,6 +87,28 @@ def upload_url(data: UploadUrlIn, db: Session = Depends(get_db),
                               get_settings().upload_url_ttl)
     return {"url": url, "expires_in": get_settings().upload_url_ttl,
             "documento_id": doc.id}
+
+@router.get("/{documento_id}/archivo")
+def descargar_archivo(documento_id: int, db: Session = Depends(get_db),
+                      store: ObjectStore = Depends(get_store),
+                      claims: dict = Depends(require_roles("auditor", "admin"))):
+    doc = db.get(Documento, documento_id)
+    version = db.get(DocumentoVersion, doc.version_vigente_id) if doc and doc.version_vigente_id else None
+    if version is None or version.documento_id != documento_id:
+        raise HTTPException(404, "El documento todavía no tiene un archivo validado.")
+    try:
+        contenido = store.get_bytes(version.object_key)
+    except S3Error as exc:
+        if exc.code == "NoSuchKey":
+            raise HTTPException(404, "El archivo no está disponible en el almacenamiento.") from exc
+        raise
+    logger.info("descarga auditoria documento_id=%s version=%s", documento_id, version.numero)
+    return Response(contenido, media_type=version.mime, headers={
+        "Cache-Control": "private, no-store",
+        "Content-Disposition": "attachment",
+        "X-Content-Type-Options": "nosniff",
+    })
+
 
 @router.get("/{documento_id}/download-url")
 def download_url(documento_id: int, db: Session = Depends(get_db),

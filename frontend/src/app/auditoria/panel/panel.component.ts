@@ -34,6 +34,12 @@ type DecisionLocal = { resultado: 'APROBADO' | 'OBSERVADO'; motivo?: string };
               <li>
                 Documento {{ doc.documento_id }} v{{ doc.version }} ({{ doc.estado }})
                 @for (motivo of doc.observaciones; track motivo) { <em>{{ motivo }}</em> }
+                <button type="button" (click)="descargar(doc)" [disabled]="descargando[doc.documento_id]">
+                  {{ descargando[doc.documento_id] ? 'Descargando…' : 'Descargar archivo' }}
+                </button>
+                @if (erroresArchivo[doc.documento_id]; as mensaje) {
+                  <p role="alert">{{ mensaje }}</p>
+                }
                 <button type="button" (click)="aprobar(fila, doc)">Aprobar</button>
                 <label>Motivo si observás
                   <textarea rows="2" [value]="motivos[fila.id]?.[doc.documento_id] || ''"
@@ -62,6 +68,35 @@ export class PanelComponent implements OnInit {
   documentos: Record<number, Doc[]> = {};
   selecciones: Record<number, Record<number, DecisionLocal>> = {};
   motivos: Record<number, Record<number, string>> = {};
+
+  descargando: Record<number, boolean> = {};
+  erroresArchivo: Record<number, string> = {};
+
+  descargar(doc: Doc) {
+    const id = doc.documento_id;
+    this.descargando[id] = true;
+    delete this.erroresArchivo[id];
+    this.api.descargar(`/documentos/${id}/archivo`).subscribe({
+      next: archivo => {
+        const extensiones: Record<string, string> = {
+          'application/pdf': 'pdf', 'image/jpeg': 'jpg', 'image/png': 'png',
+        };
+        const url = URL.createObjectURL(archivo);
+        const enlace = document.createElement('a');
+        enlace.href = url;
+        enlace.download = `documento-${id}-v${doc.version}.${extensiones[archivo.type] ?? 'bin'}`;
+        enlace.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        this.descargando[id] = false;
+      },
+      error: ({ status }) => {
+        this.descargando[id] = false;
+        this.erroresArchivo[id] = status === 404
+          ? 'El archivo validado no está disponible.'
+          : 'No se pudo descargar el archivo. Intentá nuevamente.';
+      },
+    });
+  }
 
   ngOnInit() {
     this.api.get<Fila[]>('/auditorias/solicitudes')
