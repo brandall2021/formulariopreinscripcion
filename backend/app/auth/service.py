@@ -46,7 +46,7 @@ def verify_otp(db: Session, email: str, code: str) -> str:
 def authenticate_admin(db: Session, email: str, password: str) -> str:
     email = email.strip().lower()
     user = db.query(Usuario).filter_by(email=email, activo=True).first()
-    if user is None or user.rol != "admin" or not crypt.verify(password, user.password_hash):
+    if user is None or user.rol not in ("admin", "auditor") or not crypt.verify(password, user.password_hash):
         raise ValueError("credenciales inválidas")
     s = get_settings()
     exp = int(time.time()) + ADMIN_TOKEN_TTL_SECONDS

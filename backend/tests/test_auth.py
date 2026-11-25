@@ -87,8 +87,9 @@ def test_login_admin_valida_rol_clave_y_estado(db: Session):
     assert payload["rol"] == "admin" and time.time() < payload["exp"] <= time.time() + 8 * 3600 + 5
     with pytest.raises(ValueError, match="credenciales inválidas"):
         authenticate_admin(db, "admin@face.unt.edu.ar", "clave-mala")
-    with pytest.raises(ValueError, match="credenciales inválidas"):
-        authenticate_admin(db, "auditor@face.unt.edu.ar", "clave-secreta")
+    token_auditor = authenticate_admin(db, "auditor@face.unt.edu.ar", "clave-secreta")
+    payload_auditor = jwt.decode(token_auditor, get_settings().secret_key, algorithms=["HS256"])
+    assert payload_auditor["rol"] == "auditor"
     admin.activo = False
     db.commit()
     with pytest.raises(ValueError, match="credenciales inválidas"):
