@@ -8,6 +8,15 @@ type RequisitoVista = Requisito & { nombre: string; descripcion?: string };
 @Component({
   selector: 'app-documentos',
   standalone: true,
+  styles: [`
+    .confirmacion { display: grid; justify-items: start; gap: 12px;
+      border-top: 4px solid var(--navy); }
+    .confirmacion h2, .confirmacion p { margin: 0; }
+    .confirmacion button:disabled { opacity: 1; color: #34445c; background: #e2e8f0; }
+    @media (max-width: 680px) {
+      .confirmacion button { width: 100%; }
+    }
+  `],
   template: `
     <div class="stack">
       <header>
@@ -33,10 +42,22 @@ type RequisitoVista = Requisito & { nombre: string; descripcion?: string };
           {{ cargandoRequisitos ? 'Cargando requisitos…' : 'No hay requisitos disponibles.' }}
         </p>
       }
-      <section>
-        <h2>Confirmar preinscripción</h2>
+      <section class="confirmacion" aria-labelledby="confirmacion-titulo">
+        <h2 id="confirmacion-titulo">Confirmar preinscripción</h2>
         <p class="muted">Cuando confirmes, la solicitud pasará a validación documental.</p>
-        <button type="button" (click)="confirmar()"
+        <p id="confirmacion-progreso" role="status">
+          @if (cargandoRequisitos) {
+            Cargando los requisitos para confirmar…
+          } @else if (requisitos.length) {
+            {{ documentosCargados }} de {{ requisitos.length }} documentos obligatorios cargados.
+            @if (documentosCargados < requisitos.length) {
+              Cargá los archivos pendientes para habilitar el botón.
+            }
+          } @else {
+            No hay requisitos disponibles para esta solicitud.
+          }
+        </p>
+        <button type="button" aria-describedby="confirmacion-progreso" (click)="confirmar()"
           [disabled]="!puedeConfirmar">
           {{ confirmado ? 'Preinscripción confirmada' : (confirmando ? 'Confirmando…' : 'Confirmar preinscripción') }}
         </button>
