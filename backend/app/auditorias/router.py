@@ -1,10 +1,14 @@
+import json
+from datetime import timezone
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from app.auditorias.models import Observacion
+from app.alumnos.models import Alumno
+from app.auditorias.models import Auditoria, Observacion
 from app.auditorias.service import registrar_auditoria
 from app.auth.deps import require_roles
 from app.auth.models import Usuario
+from app.catalogos.models import TipoDocumento
 from app.documentos.models import Documento, DocumentoVersion
 from app.infra.db import get_db
 from app.notificaciones.events import publicar_evento
@@ -24,6 +28,48 @@ class AuditoriaIn(BaseModel):
     # se toma siempre del token autenticado.
     auditor_id: int | None = None
     decisiones: list[Decision]
+
+@router.get("/aprobaciones")
+def aprobaciones(db: Session = Depends(get_db),
+                 claims: dict = Depends(require_roles("auditor", "admin"))):
+    auditor_actual = db.query(Usuario).filter_by(email=claims.get("sub"), activo=True).first()
+    if auditor_actual is None or auditor_actual.rol not in ("auditor", "admin"):
+        raise HTTPException(403, "auditor no autorizado")
+
+    auditorias = (db.query(Auditoria, Solicitud, Alumno, Usuario)
+                  .join(Solicitud, Solicitud.id == Auditoria.solicitud_id)
+                  .join(Alumno, Alumno.id == Solicitud.alumno_id)
+                  .join(Usuario, Usuario.id == Auditoria.auditor_id)
+                  .order_by(Auditoria.fecha.desc(), Auditoria.id.desc()).all())
+    observados = set(db.query(Observacion.auditoria_id, Observacion.documento_id).all())
+    nombres = {(sol_id, doc_id): nombre for sol_id, doc_id, nombre in
+               db.query(Documento.solicitud_id, Documento.id, TipoDocumento.nombre)
+               .join(TipoDocumento, TipoDocumento.id == Documento.tipo_documento_id)}
+    filas = []
+    for audit, sol, alumno, auditor in auditorias:
+        try:
+            decisiones = json.loads(audit.notas or "[]")
+        except ValueError:
+            continue
+        if not isinstance(decisiones, list):
+            continue
+        for decision in decisiones:
+            if not isinstance(decision, dict):
+                continue
+            doc_id = decision.get("documento_id")
+            if not isinstance(doc_id, int) or (audit.id, doc_id) in observados:
+                continue
+            nombre = nombres.get((sol.id, doc_id))
+            if nombre is None:
+                continue
+            filas.append({
+                "auditoria_id": audit.id, "documento_id": doc_id,
+                "solicitud": sol.numero, "alumno": f"{alumno.apellido}, {alumno.nombres}",
+                "documento": nombre, "version": decision.get("version"),
+                "auditor": auditor.email, "fecha": audit.fecha.replace(tzinfo=timezone.utc),
+            })
+    return filas
+
 
 @router.get("/solicitudes")
 def listar(estado: str | None = None, carrera_id: int | None = None,

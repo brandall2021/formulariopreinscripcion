@@ -19,12 +19,31 @@ interface Doc {
   observaciones: string[];
 }
 
+interface Aprobacion {
+  auditoria_id: number;
+  documento_id: number;
+  solicitud: string | null;
+  alumno: string;
+  documento: string;
+  version: number;
+  auditor: string;
+  fecha: string;
+}
+
+const fechaArgentina = new Intl.DateTimeFormat('es-AR', {
+  timeZone: 'America/Argentina/Buenos_Aires',
+  dateStyle: 'short', timeStyle: 'medium',
+});
+
 type DecisionLocal = { resultado: 'APROBADO' | 'OBSERVADO'; motivo?: string };
 
 @Component({
   selector: 'app-panel',
   standalone: true,
   styles: [`
+    .tabla-aprobaciones { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; text-align: left; }
+    th, td { padding: 8px; border-bottom: 1px solid var(--line); }
     .vista { display: grid; gap: 10px; margin-block: 12px; }
     .vista iframe { display: block; width: 100%; height: min(70vh, 720px); border: 1px solid var(--line); }
     .vista img { display: block; max-width: 100%; max-height: 70vh; object-fit: contain; }
@@ -32,6 +51,35 @@ type DecisionLocal = { resultado: 'APROBADO' | 'OBSERVADO'; motivo?: string };
   `],
   template: `
     <h1>Auditoría documental</h1>
+    <details class="card" (toggle)="alAlternarHistorial($event)">
+      <summary>Auditoría de aprobación</summary>
+      @if (cargandoAprobaciones) { <p role="status">Cargando aprobaciones…</p> }
+      @else if (errorAprobaciones) {
+        <p role="alert">{{ errorAprobaciones }}</p>
+        <button type="button" (click)="cargarAprobaciones()">Reintentar</button>
+      } @else if (aprobaciones.length) {
+        <div class="tabla-aprobaciones">
+          <table aria-label="Historial de aprobación de documentos">
+            <thead>
+              <tr>
+                <th scope="col">Solicitud</th><th scope="col">Alumno</th>
+                <th scope="col">Documento</th><th scope="col">Aprobó</th>
+                <th scope="col">Fecha y hora (Argentina)</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (fila of aprobaciones; track fila.auditoria_id + ':' + fila.documento_id) {
+                <tr>
+                  <td>{{ fila.solicitud }}</td><td>{{ fila.alumno }}</td>
+                  <td>{{ fila.documento }} · v{{ fila.version }}</td><td>{{ fila.auditor }}</td>
+                  <td><time [attr.datetime]="fila.fecha">{{ formatearFecha(fila.fecha) }}</time></td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      } @else { <p>No hay aprobaciones registradas.</p> }
+    </details>
     @for (fila of filas; track fila.numero) {
       <article>
         <strong>{{ fila.numero }}</strong> — {{ fila.dni }} — {{ fila.estado }}
@@ -139,6 +187,38 @@ export class PanelComponent implements OnInit {
         },
       });
   }
+  aprobaciones: Aprobacion[] = [];
+  cargandoAprobaciones = false;
+  errorAprobaciones = '';
+  private historialAbierto = false;
+
+  formatearFecha(fecha: string) {
+    return fechaArgentina.format(new Date(fecha));
+  }
+
+  alAlternarHistorial(evento: Event) {
+    this.historialAbierto = (evento.currentTarget as HTMLDetailsElement).open;
+    if (this.historialAbierto) this.cargarAprobaciones();
+  }
+
+  cargarAprobaciones() {
+    if (this.cargandoAprobaciones) return;
+    this.cargandoAprobaciones = true;
+    this.errorAprobaciones = '';
+    this.api.get<Aprobacion[]>('/auditorias/aprobaciones')
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: filas => {
+          this.aprobaciones = filas;
+          this.cargandoAprobaciones = false;
+        },
+        error: () => {
+          this.errorAprobaciones = 'No se pudo cargar el historial de aprobaciones.';
+          this.cargandoAprobaciones = false;
+        },
+      });
+  }
+
   ngOnInit() {
     this.api.get<Fila[]>('/auditorias/solicitudes')
       .subscribe(filas => this.filas = filas.filter(
@@ -195,6 +275,7 @@ export class PanelComponent implements OnInit {
       delete this.selecciones[fila.id];
       delete this.motivos[fila.id];
       this.filas = this.filas.filter(f => f.id !== fila.id);
+      if (this.historialAbierto) this.cargarAprobaciones();
     });
   }
 }
