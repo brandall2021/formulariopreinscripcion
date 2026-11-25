@@ -1,4 +1,6 @@
-import { Component, OnInit, inject } from '@angular/core';
+import { Component, DestroyRef, OnInit, inject } from '@angular/core';
+import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ApiService } from '../../core/api.service';
 
 interface Fila {
@@ -22,6 +24,12 @@ type DecisionLocal = { resultado: 'APROBADO' | 'OBSERVADO'; motivo?: string };
 @Component({
   selector: 'app-panel',
   standalone: true,
+  styles: [`
+    .vista { display: grid; gap: 10px; margin-block: 12px; }
+    .vista iframe { display: block; width: 100%; height: min(70vh, 720px); border: 1px solid var(--line); }
+    .vista img { display: block; max-width: 100%; max-height: 70vh; object-fit: contain; }
+    .decision { margin-block: 12px 24px; padding-top: 12px; border-top: 1px solid var(--line); }
+  `],
   template: `
     <h1>Auditoría documental</h1>
     @for (fila of filas; track fila.numero) {
@@ -29,17 +37,36 @@ type DecisionLocal = { resultado: 'APROBADO' | 'OBSERVADO'; motivo?: string };
         <strong>{{ fila.numero }}</strong> — {{ fila.dni }} — {{ fila.estado }}
         <button (click)="cargarDocumentos(fila)">Auditar</button>
         @if (documentos[fila.id]) {
+          <h2>Documentos presentados</h2>
           <ul>
             @for (doc of documentos[fila.id]; track doc.documento_id) {
               <li>
                 Documento {{ doc.documento_id }} v{{ doc.version }} ({{ doc.estado }})
                 @for (motivo of doc.observaciones; track motivo) { <em>{{ motivo }}</em> }
-                <button type="button" (click)="descargar(doc)" [disabled]="descargando[doc.documento_id]">
-                  {{ descargando[doc.documento_id] ? 'Descargando…' : 'Descargar archivo' }}
+                <button type="button" (click)="previsualizar(doc)" [disabled]="cargandoArchivo"
+                  [attr.aria-expanded]="vista?.id === doc.documento_id">
+                  {{ cargandoArchivo === doc.documento_id ? 'Abriendo…' : 'Ver archivo' }}
                 </button>
                 @if (erroresArchivo[doc.documento_id]; as mensaje) {
                   <p role="alert">{{ mensaje }}</p>
                 }
+                @if (vista; as archivo) {
+                  @if (archivo.id === doc.documento_id) {
+                    <div class="vista">
+                      <button type="button" (click)="cerrarVista()">Cerrar vista previa</button>
+                      @if (archivo.pdf; as pdf) {
+                        <iframe [src]="pdf" [title]="'Vista previa del documento ' + doc.documento_id"></iframe>
+                      } @else {
+                        <img [src]="archivo.url" [alt]="'Vista previa del documento ' + doc.documento_id">
+                      }
+                    </div>
+                  }
+                }
+                <div class="decision">
+                  <h3>Decisión de auditoría</h3>
+                  @if (selecciones[fila.id]?.[doc.documento_id]; as decision) {
+                    <p role="status">Decisión seleccionada: {{ decision.resultado }}</p>
+                  }
                 <button type="button" (click)="aprobar(fila, doc)">Aprobar</button>
                 <label>Motivo si observás
                   <textarea rows="2" [value]="motivos[fila.id]?.[doc.documento_id] || ''"
@@ -49,6 +76,7 @@ type DecisionLocal = { resultado: 'APROBADO' | 'OBSERVADO'; motivo?: string };
                   [disabled]="!(motivos[fila.id]?.[doc.documento_id] || '').trim()">
                   Observar documento
                 </button>
+                </div>
               </li>
             }
           </ul>
@@ -69,35 +97,48 @@ export class PanelComponent implements OnInit {
   selecciones: Record<number, Record<number, DecisionLocal>> = {};
   motivos: Record<number, Record<number, string>> = {};
 
-  descargando: Record<number, boolean> = {};
+  private sanitizer = inject(DomSanitizer);
+  private destroyRef = inject(DestroyRef);
+  vista: { id: number; url: string; pdf: SafeResourceUrl | null } | null = null;
+  cargandoArchivo = 0;
   erroresArchivo: Record<number, string> = {};
 
-  descargar(doc: Doc) {
-    const id = doc.documento_id;
-    this.descargando[id] = true;
-    delete this.erroresArchivo[id];
-    this.api.descargar(`/documentos/${id}/archivo`).subscribe({
-      next: archivo => {
-        const extensiones: Record<string, string> = {
-          'application/pdf': 'pdf', 'image/jpeg': 'jpg', 'image/png': 'png',
-        };
-        const url = URL.createObjectURL(archivo);
-        const enlace = document.createElement('a');
-        enlace.href = url;
-        enlace.download = `documento-${id}-v${doc.version}.${extensiones[archivo.type] ?? 'bin'}`;
-        enlace.click();
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
-        this.descargando[id] = false;
-      },
-      error: ({ status }) => {
-        this.descargando[id] = false;
-        this.erroresArchivo[id] = status === 404
-          ? 'El archivo validado no está disponible.'
-          : 'No se pudo descargar el archivo. Intentá nuevamente.';
-      },
-    });
+  constructor() {
+    this.destroyRef.onDestroy(() => this.cerrarVista());
   }
 
+  cerrarVista() {
+    if (this.vista) URL.revokeObjectURL(this.vista.url);
+    this.vista = null;
+  }
+
+  previsualizar(doc: Doc) {
+    const id = doc.documento_id;
+    this.cerrarVista();
+    this.cargandoArchivo = id;
+    delete this.erroresArchivo[id];
+    this.api.descargar(`/documentos/${id}/archivo`)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: archivo => {
+          this.cargandoArchivo = 0;
+          if (!['application/pdf', 'image/jpeg', 'image/png'].includes(archivo.type)) {
+            this.erroresArchivo[id] = 'Este formato no admite vista previa.';
+            return;
+          }
+          const url = URL.createObjectURL(archivo);
+          this.vista = { id, url, pdf: archivo.type === 'application/pdf'
+            ? this.sanitizer.bypassSecurityTrustResourceUrl(url)
+            : null };
+        },
+        error: ({ status }) => {
+          this.cargandoArchivo = 0;
+          this.erroresArchivo[id] = status === 404
+            ? 'El archivo validado no está disponible.'
+            : 'No se pudo abrir el archivo. Intentá nuevamente.';
+        },
+      });
+  }
   ngOnInit() {
     this.api.get<Fila[]>('/auditorias/solicitudes')
       .subscribe(filas => this.filas = filas.filter(
@@ -149,6 +190,7 @@ export class PanelComponent implements OnInit {
     this.api.post(`/auditorias/solicitudes/${fila.id}`, {
       decisiones,
     }).subscribe(() => {
+      if (this.documentos[fila.id].some(doc => doc.documento_id === this.vista?.id)) this.cerrarVista();
       delete this.documentos[fila.id];
       delete this.selecciones[fila.id];
       delete this.motivos[fila.id];
