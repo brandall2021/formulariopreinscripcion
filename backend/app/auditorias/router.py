@@ -1,8 +1,11 @@
 import logging
+import csv
+import io
 import json
-from datetime import timezone
+from datetime import date, datetime, time, timezone
+from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from app.alumnos.models import Alumno
@@ -11,7 +14,8 @@ from app.auditorias.models import Auditoria, Observacion
 from app.auditorias.service import registrar_auditoria
 from app.auth.deps import require_roles
 from app.auth.models import Usuario
-from app.catalogos.models import TipoDocumento
+from app.catalogos.models import Carrera, Convocatoria, TipoDocumento
+from app.historial.models import HistorialEstado
 from app.documentos.models import Documento, DocumentoVersion
 from app.documentos.router import get_store
 from app.infra.db import get_db
@@ -62,7 +66,10 @@ def aprobaciones(db: Session = Depends(get_db),
             if not isinstance(decision, dict):
                 continue
             doc_id = decision.get("documento_id")
-            if not isinstance(doc_id, int) or (audit.id, doc_id) in observados:
+            resultado = decision.get("resultado") or (
+                "OBSERVADO" if isinstance(doc_id, int) and (audit.id, doc_id) in observados else "APROBADO"
+            )
+            if not isinstance(doc_id, int) or resultado not in ("APROBADO", "RECHAZADO"):
                 continue
             nombre = nombres.get((sol.id, doc_id))
             if nombre is None:
@@ -71,9 +78,81 @@ def aprobaciones(db: Session = Depends(get_db),
                 "auditoria_id": audit.id, "documento_id": doc_id,
                 "solicitud": sol.numero, "alumno": f"{alumno.apellido}, {alumno.nombres}",
                 "documento": nombre, "version": decision.get("version"),
+                "resultado": resultado, "motivo": decision.get("motivo"),
                 "auditor": auditor.email, "fecha": audit.fecha.replace(tzinfo=timezone.utc),
             })
     return filas
+
+
+ARGENTINA = ZoneInfo("America/Argentina/Buenos_Aires")
+
+
+def celda_csv(valor):
+    texto = "" if valor is None else str(valor)
+    if texto.lstrip().startswith(("=", "+", "-", "@")) or texto.startswith(("\t", "\r", "\n")):
+        return "'" + texto
+    return texto
+
+
+@router.get("/listado.csv")
+def listado(resultado: str | None = None, desde: date | None = None,
+            hasta: date | None = None, carrera_id: int | None = None,
+            db: Session = Depends(get_db),
+            claims: dict = Depends(require_roles("auditor", "admin"))):
+    usuario = db.query(Usuario).filter_by(email=claims.get("sub"), activo=True).first()
+    if usuario is None or usuario.rol not in ("auditor", "admin"):
+        raise HTTPException(403, "auditor no autorizado")
+    estados = {
+        "APROBADA": ("DOCUMENTACION_APROBADA", "FINALIZADA"),
+        "RECHAZADA": ("RECHAZADA",),
+        "OBSERVADA": ("OBSERVADA", "PENDIENTE_ALUMNO"),
+    }
+    if resultado and resultado not in estados:
+        raise HTTPException(422, "Resultado inválido.")
+    if desde and hasta and desde > hasta:
+        raise HTTPException(422, "La fecha desde debe ser anterior o igual a la fecha hasta.")
+
+    ultimo_resultado = (db.query(HistorialEstado.id)
+                        .filter(HistorialEstado.solicitud_id == Solicitud.id,
+                                HistorialEstado.estado_nuevo.in_(
+                                    ("DOCUMENTACION_APROBADA", "RECHAZADA", "OBSERVADA")))
+                        .order_by(HistorialEstado.fecha.desc(), HistorialEstado.id.desc())
+                        .limit(1).correlate(Solicitud).scalar_subquery())
+    consulta = (db.query(Solicitud, Alumno, Carrera.nombre, Convocatoria.nombre, HistorialEstado)
+                .select_from(Solicitud)
+                .join(Alumno, Alumno.id == Solicitud.alumno_id)
+                .join(Carrera, Carrera.id == Solicitud.carrera_id)
+                .join(Convocatoria, Convocatoria.id == Solicitud.convocatoria_id)
+                .outerjoin(HistorialEstado, HistorialEstado.id == ultimo_resultado))
+    if resultado:
+        consulta = consulta.filter(Solicitud.estado.in_(estados[resultado]))
+    if carrera_id:
+        consulta = consulta.filter(Solicitud.carrera_id == carrera_id)
+    if desde:
+        inicio = datetime.combine(desde, time.min, ARGENTINA).astimezone(timezone.utc).replace(tzinfo=None)
+        consulta = consulta.filter(HistorialEstado.fecha >= inicio)
+    if hasta:
+        fin = datetime.combine(hasta, time.max, ARGENTINA).astimezone(timezone.utc).replace(tzinfo=None)
+        consulta = consulta.filter(HistorialEstado.fecha <= fin)
+
+    salida = io.StringIO(newline="")
+    escritor = csv.writer(salida, delimiter=";")
+    escritor.writerow(["Apellido", "Nombres", "DNI", "Correo", "Teléfono", "Carrera", "Convocatoria",
+                       "Solicitud", "Tipo de ingresante", "Estado actual", "Fecha de resolución (Argentina)",
+                       "Motivo", "Fecha de nacimiento", "Domicilio", "Discapacidad"])
+    for sol, alumno, carrera, convocatoria, historial in consulta.order_by(Alumno.apellido, Alumno.nombres, Solicitud.id):
+        fecha = (historial.fecha.replace(tzinfo=timezone.utc).astimezone(ARGENTINA)
+                 .strftime("%Y-%m-%d %H:%M:%S")) if historial else ""
+        escritor.writerow(map(celda_csv, [
+            alumno.apellido, alumno.nombres, sol.dni, alumno.email, alumno.celular, carrera, convocatoria,
+            sol.numero, sol.tipo_ingresante, sol.estado, fecha, historial.motivo if historial else None,
+            alumno.fecha_nacimiento, alumno.domicilio, "Sí" if alumno.discapacidad else "No",
+        ]))
+    logging.getLogger(__name__).info("exportacion_listado_auditoria usuario_id=%s", usuario.id)
+    return Response(salida.getvalue().encode("utf-8-sig"), media_type="text/csv", headers={
+        "Cache-Control": "private, no-store",
+        "Content-Disposition": 'attachment; filename="listado-auditoria.csv"',
+    })
 
 
 @router.get("/solicitudes")

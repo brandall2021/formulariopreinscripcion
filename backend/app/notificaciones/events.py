@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.alumnos.models import Alumno
 from app.consentimientos.models import Consentimiento
 from app.notificaciones.models import Notificacion
-from app.notificaciones.templates import plantilla_observaciones, plantilla_aprobada
+from app.notificaciones.templates import plantilla_observaciones, plantilla_aprobada, plantilla_rechazada
 from app.solicitudes.models import Solicitud
 
 def publicar_evento(db: Session, solicitud_id: int, evento: str,
@@ -15,6 +15,8 @@ def publicar_evento(db: Session, solicitud_id: int, evento: str,
     numero = sol.numero if sol else str(solicitud_id)
     if evento == "OBSERVADA":
         asunto, cuerpo = plantilla_observaciones(nombre, numero, datos["observaciones"])
+    elif evento == "RECHAZADA":
+        asunto, cuerpo = plantilla_rechazada(nombre, numero, datos["rechazados"])
     else:
         asunto, cuerpo = plantilla_aprobada(nombre, numero)
     canales = ["email"]

@@ -27,6 +27,8 @@ interface Aprobacion {
   documento: string;
   version: number;
   auditor: string;
+  resultado: 'APROBADO' | 'RECHAZADO';
+  motivo: string | null;
   fecha: string;
 }
 
@@ -35,7 +37,7 @@ const fechaArgentina = new Intl.DateTimeFormat('es-AR', {
   dateStyle: 'short', timeStyle: 'medium',
 });
 
-type DecisionLocal = { resultado: 'APROBADO' | 'OBSERVADO'; motivo?: string };
+type DecisionLocal = { resultado: 'APROBADO' | 'OBSERVADO' | 'RECHAZADO'; motivo?: string };
 
 @Component({
   selector: 'app-panel',
@@ -67,19 +69,48 @@ type DecisionLocal = { resultado: 'APROBADO' | 'OBSERVADO'; motivo?: string };
       </button>
       @if (errorExportacion) { <p role="alert">{{ errorExportacion }}</p> }
     </details>
+    <details class="card">
+      <summary>Listado de alumnos</summary>
+      <p>Las fechas filtran por la última resolución de auditoría o rechazo administrativo.</p>
+      <div class="grid-2">
+        <label>Resultado
+          <select #resultadoListado>
+            <option value="">Todos los estados</option>
+            <option value="APROBADA">Aprobadas</option>
+            <option value="RECHAZADA">Rechazadas</option>
+            <option value="OBSERVADA">Observadas</option>
+          </select>
+        </label>
+        <label>Carrera
+          <select #carreraListado>
+            <option value="">Todas las carreras</option>
+            @for (carrera of carrerasListado; track carrera.id) {
+              <option [value]="carrera.id">{{ carrera.nombre }}</option>
+            }
+          </select>
+        </label>
+        <label>Desde <input type="date" #desdeListado></label>
+        <label>Hasta <input type="date" #hastaListado></label>
+      </div>
+      <button type="button" [disabled]="exportando"
+        (click)="exportarListado(resultadoListado.value, carreraListado.value, desdeListado.value, hastaListado.value)">
+        Exportar listado CSV
+      </button>
+      @if (errorListado) { <p role="alert">{{ errorListado }}</p> }
+    </details>
     <details class="card" (toggle)="alAlternarHistorial($event)">
-      <summary>Auditoría de aprobación</summary>
+      <summary>Auditoría de aprobación y rechazo</summary>
       @if (cargandoAprobaciones) { <p role="status">Cargando aprobaciones…</p> }
       @else if (errorAprobaciones) {
         <p role="alert">{{ errorAprobaciones }}</p>
         <button type="button" (click)="cargarAprobaciones()">Reintentar</button>
       } @else if (aprobaciones.length) {
         <div class="tabla-aprobaciones">
-          <table aria-label="Historial de aprobación de documentos">
+          <table aria-label="Historial de aprobación y rechazo de documentos">
             <thead>
               <tr>
                 <th scope="col">Solicitud</th><th scope="col">Alumno</th>
-                <th scope="col">Documento</th><th scope="col">Aprobó</th>
+                <th scope="col">Documento</th><th scope="col">Resultado y motivo</th><th scope="col">Auditor</th>
                 <th scope="col">Fecha y hora (Argentina)</th>
               </tr>
             </thead>
@@ -87,14 +118,14 @@ type DecisionLocal = { resultado: 'APROBADO' | 'OBSERVADO'; motivo?: string };
               @for (fila of aprobaciones; track fila.auditoria_id + ':' + fila.documento_id) {
                 <tr>
                   <td>{{ fila.solicitud }}</td><td>{{ fila.alumno }}</td>
-                  <td>{{ fila.documento }} · v{{ fila.version }}</td><td>{{ fila.auditor }}</td>
+                  <td>{{ fila.documento }} · v{{ fila.version }}</td><td>{{ fila.resultado }}{{ fila.motivo ? " · " + fila.motivo : "" }}</td><td>{{ fila.auditor }}</td>
                   <td><time [attr.datetime]="fila.fecha">{{ formatearFecha(fila.fecha) }}</time></td>
                 </tr>
               }
             </tbody>
           </table>
         </div>
-      } @else { <p>No hay aprobaciones registradas.</p> }
+      } @else { <p>No hay aprobaciones ni rechazos registrados.</p> }
     </details>
     @for (fila of filas; track fila.numero) {
       <article>
@@ -132,7 +163,7 @@ type DecisionLocal = { resultado: 'APROBADO' | 'OBSERVADO'; motivo?: string };
                     <p role="status">Decisión seleccionada: {{ decision.resultado }}</p>
                   }
                 <button type="button" (click)="aprobar(fila, doc)">Aprobar</button>
-                <label>Motivo si observás
+                <label>Motivo de observación o rechazo
                   <textarea rows="2" [value]="motivos[fila.id]?.[doc.documento_id] || ''"
                     (input)="setMotivo(fila, doc, $any($event.target).value)"></textarea>
                 </label>
@@ -140,11 +171,19 @@ type DecisionLocal = { resultado: 'APROBADO' | 'OBSERVADO'; motivo?: string };
                   [disabled]="!(motivos[fila.id]?.[doc.documento_id] || '').trim()">
                   Observar documento
                 </button>
+                <button type="button" (click)="observar(fila, doc, 'RECHAZADO')"
+                  [disabled]="!(motivos[fila.id]?.[doc.documento_id] || '').trim()">
+                  Rechazar documento
+                </button>
                 </div>
               </li>
             }
           </ul>
-          <button [disabled]="!puedeRegistrar(fila)" (click)="registrar(fila)">
+          @if (tieneRechazos(fila)) {
+            <p role="status">Al registrar el rechazo, la solicitud quedará rechazada.</p>
+          }
+          @if (erroresAuditoria[fila.id]; as error) { <p role="alert">{{ error }}</p> }
+          <button [disabled]="registrando[fila.id] || !puedeRegistrar(fila)" (click)="registrar(fila)">
             Registrar auditoría
           </button>
         }
@@ -159,6 +198,10 @@ export class PanelComponent implements OnInit {
   filas: Fila[] = [];
   solicitudesExportables: Fila[] = [];
   exportando = false;
+  carrerasListado: { id: number; nombre: string }[] = [];
+  errorListado = '';
+  erroresAuditoria: Record<number, string> = {};
+  registrando: Record<number, boolean> = {};
   errorExportacion = '';
   documentos: Record<number, Doc[]> = {};
   selecciones: Record<number, Record<number, DecisionLocal>> = {};
@@ -239,6 +282,12 @@ export class PanelComponent implements OnInit {
   }
 
   ngOnInit() {
+    this.api.get<{ id: number; nombre: string }[]>('/catalogos/carreras')
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: carreras => { this.carrerasListado = carreras; },
+        error: () => { this.errorListado = 'No se pudieron cargar las opciones de carrera.'; },
+      });
     this.api.get<Fila[]>('/auditorias/solicitudes')
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
@@ -248,6 +297,41 @@ export class PanelComponent implements OnInit {
         },
         error: () => { this.errorExportacion = 'No se pudo cargar el listado de solicitudes.'; },
       });
+  }
+
+  exportarListado(resultado: string, carrera: string, desde: string, hasta: string) {
+    if (this.exportando) return;
+    this.errorListado = '';
+    if (desde && hasta && desde > hasta) {
+      this.errorListado = 'La fecha desde debe ser anterior o igual a la fecha hasta.';
+      return;
+    }
+    const filtros = new URLSearchParams();
+    for (const [campo, valor] of Object.entries({ resultado, carrera_id: carrera, desde, hasta })) {
+      if (valor) filtros.set(campo, valor);
+    }
+    this.exportando = true;
+    this.api.descargar(`/auditorias/listado.csv?${filtros}`)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: archivo => {
+          this.guardarArchivo(archivo, 'listado-auditoria.csv');
+          this.exportando = false;
+        },
+        error: () => {
+          this.exportando = false;
+          this.errorListado = 'No se pudo exportar el listado. Intentá nuevamente.';
+        },
+      });
+  }
+
+  private guardarArchivo(archivo: Blob, nombre: string) {
+    const url = URL.createObjectURL(archivo);
+    const enlace = document.createElement('a');
+    enlace.href = url;
+    enlace.download = nombre;
+    enlace.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   exportarLegajo(solicitud: string) {
@@ -262,12 +346,7 @@ export class PanelComponent implements OnInit {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: archivo => {
-          const url = URL.createObjectURL(archivo);
-          const enlace = document.createElement('a');
-          enlace.href = url;
-          enlace.download = `legajo-solicitud-${solicitud}.zip`;
-          enlace.click();
-          setTimeout(() => URL.revokeObjectURL(url), 1000);
+          this.guardarArchivo(archivo, `legajo-solicitud-${solicitud}.zip`);
           this.exportando = false;
         },
         error: () => {
@@ -294,12 +373,12 @@ export class PanelComponent implements OnInit {
     this.motivos[fila.id] ??= {};
     this.motivos[fila.id][doc.documento_id] = motivo;
   }
-  observar(fila: Fila, doc: Doc) {
+  observar(fila: Fila, doc: Doc, resultado: 'OBSERVADO' | 'RECHAZADO' = 'OBSERVADO') {
     const motivo = this.motivos[fila.id]?.[doc.documento_id] ?? '';
     if (!motivo.trim()) return;
     this.selecciones[fila.id] ??= {};
     this.selecciones[fila.id][doc.documento_id] = {
-      resultado: 'OBSERVADO', motivo: motivo.trim(),
+      resultado, motivo: motivo.trim(),
     };
   }
 
@@ -309,25 +388,36 @@ export class PanelComponent implements OnInit {
     return !!docs?.length && docs.every(doc => !!selecciones?.[doc.documento_id]);
   }
 
+  tieneRechazos(fila: Fila) {
+    return Object.values(this.selecciones[fila.id] ?? {}).some(decision => decision.resultado === 'RECHAZADO');
+  }
+
   registrar(fila: Fila) {
-    if (!this.puedeRegistrar(fila)) return;
-    const decisiones = this.documentos[fila.id].map(doc => {
-      const decision = this.selecciones[fila.id][doc.documento_id];
-      return decision.resultado === 'OBSERVADO'
-        ? { documento_id: doc.documento_id, version: doc.version,
-            resultado: decision.resultado, motivo: decision.motivo }
-        : { documento_id: doc.documento_id, version: doc.version,
-            resultado: decision.resultado };
-    });
-    this.api.post(`/auditorias/solicitudes/${fila.id}`, {
-      decisiones,
-    }).subscribe(() => {
-      if (this.documentos[fila.id].some(doc => doc.documento_id === this.vista?.id)) this.cerrarVista();
-      delete this.documentos[fila.id];
-      delete this.selecciones[fila.id];
-      delete this.motivos[fila.id];
-      this.filas = this.filas.filter(f => f.id !== fila.id);
-      if (this.historialAbierto) this.cargarAprobaciones();
-    });
+    if (this.registrando[fila.id] || !this.puedeRegistrar(fila)) return;
+    this.registrando[fila.id] = true;
+    delete this.erroresAuditoria[fila.id];
+    const decisiones = this.documentos[fila.id].map(doc => ({
+      documento_id: doc.documento_id,
+      version: doc.version,
+      ...this.selecciones[fila.id][doc.documento_id],
+    }));
+    this.api.post(`/auditorias/solicitudes/${fila.id}`, { decisiones })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => {
+          if (this.documentos[fila.id].some(doc => doc.documento_id === this.vista?.id)) this.cerrarVista();
+          delete this.documentos[fila.id];
+          delete this.selecciones[fila.id];
+          delete this.motivos[fila.id];
+          delete this.registrando[fila.id];
+          this.filas = this.filas.filter(f => f.id !== fila.id);
+          if (this.historialAbierto) this.cargarAprobaciones();
+        },
+        error: ({ error }) => {
+          this.registrando[fila.id] = false;
+          this.erroresAuditoria[fila.id] = typeof error?.detail === 'string'
+            ? error.detail : 'No se pudo registrar la auditoría.';
+        },
+      });
   }
 }

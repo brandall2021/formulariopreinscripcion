@@ -1,5 +1,6 @@
 import json
 from datetime import datetime
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 from app.auditorias.models import Auditoria, Observacion
 from app.catalogos.models import TipoDocumento
@@ -9,7 +10,8 @@ from app.solicitudes.service import registrar_transicion
 
 def registrar_auditoria(db: Session, solicitud_id: int, auditor_id: int,
                         decisiones: list[dict], on_event=None) -> Auditoria:
-    sol = db.get(Solicitud, solicitud_id)
+    sol = db.execute(select(Solicitud).where(
+        Solicitud.id == solicitud_id).with_for_update()).scalar_one_or_none()
     if sol is None:
         raise ValueError("solicitud no encontrada")
     if sol.estado not in ("EN_AUDITORIA", "EN_REAUDITORIA"):
@@ -34,10 +36,10 @@ def registrar_auditoria(db: Session, solicitud_id: int, auditor_id: int,
         if doc.version_vigente_id is None:
             raise ValueError(f"documento {doc.id} sin versión vigente")
         resultado = decision.get("resultado")
-        if resultado not in ("OBSERVADO", "APROBADO"):
+        if resultado not in ("OBSERVADO", "APROBADO", "RECHAZADO"):
             raise ValueError(f"resultado inválido: {resultado}")
-        if resultado == "OBSERVADO" and not (decision.get("motivo") or "").strip():
-            raise ValueError("motivo obligatorio al observar")
+        if resultado in ("OBSERVADO", "RECHAZADO") and not (decision.get("motivo") or "").strip():
+            raise ValueError("motivo obligatorio al observar o rechazar")
     esperados = {doc.id for doc in db.query(Documento)
                  .filter_by(solicitud_id=solicitud_id).all()}
     if vistos != esperados:
@@ -45,16 +47,23 @@ def registrar_auditoria(db: Session, solicitud_id: int, auditor_id: int,
     audit = Auditoria(solicitud_id=solicitud_id, auditor_id=auditor_id,
                       resultado="APROBADO",
                       notas=json.dumps([
-                          {"documento_id": d["documento_id"], "version": d["version"]}
+                          {"documento_id": d["documento_id"], "version": d["version"],
+                           "resultado": d["resultado"], "motivo": d.get("motivo")}
                           for d in decisiones
                       ]))
     db.add(audit)
     db.flush()
     observados = []
+    rechazados = []
     for decision in decisiones:
         doc = db.get(Documento, decision["documento_id"])
         resultado = decision["resultado"]
-        if resultado == "OBSERVADO":
+        if resultado == "RECHAZADO":
+            doc.estado = "RECHAZADO"
+            nombre = db.get(TipoDocumento, doc.tipo_documento_id).nombre
+            rechazados.append({"documento_id": doc.id, "nombre": nombre,
+                               "motivo": decision["motivo"].strip()})
+        elif resultado == "OBSERVADO":
             motivo = decision["motivo"].strip()
             doc.estado = "OBSERVADO"
             db.add(Observacion(auditoria_id=audit.id, documento_id=doc.id,
@@ -67,7 +76,12 @@ def registrar_auditoria(db: Session, solicitud_id: int, auditor_id: int,
             for obs in db.query(Observacion).filter_by(
                     documento_id=doc.id, resuelta_en=None).all():
                 obs.resuelta_en = datetime.utcnow()
-    if observados:
+    if rechazados:
+        audit.resultado = "RECHAZADO"
+        motivo = "; ".join(f"{doc['nombre']}: {doc['motivo']}" for doc in rechazados)
+        registrar_transicion(db, sol, "RECHAZADA", f"auditor:{auditor_id}", motivo, commit=False)
+        evento, datos = "RECHAZADA", {"rechazados": rechazados}
+    elif observados:
         audit.resultado = "OBSERVADO"
         registrar_transicion(db, sol, "OBSERVADA", f"auditor:{auditor_id}")
         registrar_transicion(db, sol, "PENDIENTE_ALUMNO", f"auditor:{auditor_id}")

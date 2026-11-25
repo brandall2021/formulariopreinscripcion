@@ -118,4 +118,19 @@ def test_version_evaluada_queda_registrada(solicitud_en_auditoria, db: Session):
     audit = registrar_auditoria(db, sol.id, auditor_id, [
         {"documento_id": doc.id, "version": doc.version, "resultado": "APROBADO"},
     ])
-    assert {"documento_id": doc.id, "version": 1} in json.loads(audit.notas)
+    assert {"documento_id": doc.id, "version": 1, "resultado": "APROBADO", "motivo": None} in json.loads(audit.notas)
+
+
+def test_rechazo_registra_motivo_y_auditor(solicitud_en_auditoria, db: Session):
+    sol, doc, auditor_id = solicitud_en_auditoria
+    decision = {"documento_id": doc.id, "version": doc.version, "resultado": "RECHAZADO"}
+    with pytest.raises(ValueError, match="motivo obligatorio"):
+        registrar_auditoria(db, sol.id, auditor_id, [decision])
+
+    decision["motivo"] = "El documento no corresponde a la persona solicitante."
+    audit = registrar_auditoria(db, sol.id, auditor_id, [decision])
+    assert sol.estado == "RECHAZADA"
+    assert doc.estado == "RECHAZADO"
+    assert audit.auditor_id == auditor_id
+    assert audit.fecha is not None
+    assert json.loads(audit.notas) == [decision]

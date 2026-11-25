@@ -17,6 +17,7 @@ describe('PanelComponent', () => {
     fixture = TestBed.createComponent(PanelComponent);
     httpMock = TestBed.inject(HttpTestingController);
     fixture.detectChanges();
+    httpMock.expectOne(`${base}/catalogos/carreras`).flush([]);
   });
 
   afterEach(() => httpMock.verify());
@@ -59,7 +60,7 @@ describe('PanelComponent', () => {
     expect(component.puedeRegistrar(fila)).toBeFalse();
 
     component.aprobar(fila, component.documentos[1][0]);
-    spyOn(window, 'prompt').and.returnValue('Ilegible');
+    component.setMotivo(fila, component.documentos[1][1], 'Ilegible');
     component.observar(fila, component.documentos[1][1]);
     expect(component.puedeRegistrar(fila)).toBeTrue();
 

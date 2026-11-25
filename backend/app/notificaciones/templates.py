@@ -17,3 +17,12 @@ def plantilla_aprobada(nombre: str, numero: str) -> tuple[str, str]:
               f"fue aprobada. Puede continuar el trámite administrativo en {URL_PORTAL}.\n\n"
               f"Departamento de Alumnos – FACE")
     return asunto, cuerpo
+
+def plantilla_rechazada(nombre: str, numero: str,
+                         rechazados: list[dict]) -> tuple[str, str]:
+    motivos = "\n".join(f"- {doc['nombre']}: {doc['motivo']}" for doc in rechazados)
+    asunto = "Preinscripción rechazada – FACE"
+    cuerpo = (f"Estimado/a {nombre}:\n\nLa solicitud {numero} fue rechazada en la "
+              f"auditoría documental por los siguientes motivos:\n{motivos}\n\n"
+              "Departamento de Alumnos – FACE")
+    return asunto, cuerpo
