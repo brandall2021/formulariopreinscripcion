@@ -7,10 +7,22 @@ export interface Solicitud {
   estado: string;
   version?: number;
 }
+export interface Convocatoria {
+  id: number; nombre: string; anio: number; activa: boolean;
+}
+export interface Carrera {
+  id: number; nombre: string; codigo: string; activa: boolean;
+}
 
 @Injectable({ providedIn: 'root' })
 export class SolicitudService {
   private api = inject(ApiService);
+  convocatorias() {
+    return this.api.get<Convocatoria[]>('/catalogos/convocatorias');
+  }
+  carreras() {
+    return this.api.get<Carrera[]>('/catalogos/carreras');
+  }
 
   crear(data: Record<string, unknown>) {
     return this.api.post<Solicitud>('/solicitudes', data);
