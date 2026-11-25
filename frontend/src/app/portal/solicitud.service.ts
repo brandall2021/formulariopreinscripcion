@@ -5,6 +5,7 @@ export interface Solicitud {
   id: number;
   numero: string | null;
   estado: string;
+  version?: number;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -20,7 +21,8 @@ export class SolicitudService {
   }
 
   confirmar(id: number, version: number) {
-    return this.api.post<Solicitud>(`/solicitudes/${id}/confirmar`, { version });
+    return this.api.post<{ numero: string; estado: string; version?: number }>(
+      `/solicitudes/${id}/confirmar`, { version });
   }
 
   observados(id: number) {

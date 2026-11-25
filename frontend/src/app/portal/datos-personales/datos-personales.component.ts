@@ -73,6 +73,7 @@ export class DatosPersonalesComponent {
     this.service.crear(this.form.getRawValue()).subscribe({
       next: sol => {
         localStorage.setItem('solicitudId', String(sol.id));
+        localStorage.setItem('solicitudVersion', String(sol.version ?? 1));
         this.loading = false; this.saved = true;
       },
       error: () => { this.loading = false; this.error = 'No pudimos guardar tus datos. Intentá nuevamente.'; },

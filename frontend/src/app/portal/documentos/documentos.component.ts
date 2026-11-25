@@ -1,6 +1,8 @@
 import { Component, inject } from '@angular/core';
+import { Router } from '@angular/router';
 import { SolicitudService } from '../solicitud.service';
 import { sha256 } from './checksum';
+import { validateDocument } from './document-validation';
 
 const REQUISITOS = [
   { id: 1, codigo: 'dni', nombre: 'DNI (frente y dorso)' },
@@ -34,28 +36,40 @@ const REQUISITOS = [
           @if (errores[req.id]) { <p class="error" role="alert">{{ errores[req.id] }}</p> }
         </section>
       } @empty { <p class="card">No hay requisitos disponibles.</p> }
+      <section>
+        <h2>Confirmar preinscripción</h2>
+        <p class="muted">Cuando confirmes, la solicitud pasará a validación documental.</p>
+        <button type="button" (click)="confirmar()"
+          [disabled]="documentosCargados !== requisitos.length || confirmando || confirmado">
+          {{ confirmado ? 'Preinscripción confirmada' : (confirmando ? 'Confirmando…' : 'Confirmar preinscripción') }}
+        </button>
+        @if (errores[0]) { <p class="error" role="alert">{{ errores[0] }}</p> }
+      </section>
       @if (mensaje) { <p class="success" role="status">{{ mensaje }}</p> }
     </div>
   `,
 })
 export class DocumentosComponent {
   private service = inject(SolicitudService);
+  private router = inject(Router);
   requisitos = REQUISITOS;
   estados: Record<number, string> = {};
   errores: Record<number, string> = {};
   mensaje = '';
+  confirmando = false;
+  confirmado = false;
   solicitudId = Number(localStorage.getItem('solicitudId') ?? 0);
+  get documentosCargados() {
+    return this.requisitos.filter(req => this.estados[req.id] === 'Cargado').length;
+  }
 
   async subir(tipoDocumentoId: number, event: Event) {
     const archivo = (event.target as HTMLInputElement).files?.[0];
     if (!archivo) return;
     this.errores[tipoDocumentoId] = '';
-    if (!['application/pdf', 'image/jpeg', 'image/png'].includes(archivo.type)) {
-      this.errores[tipoDocumentoId] = 'Formato no permitido. Usá PDF, JPG o PNG.';
-      return;
-    }
-    if (archivo.size > 10485760) {
-      this.errores[tipoDocumentoId] = 'El archivo supera el máximo de 10 MB.';
+    const validation = validateDocument(archivo);
+    if (!validation.valid) {
+      this.errores[tipoDocumentoId] = validation.error;
       return;
     }
     this.estados[tipoDocumentoId] = 'Subiendo…';
@@ -81,6 +95,25 @@ export class DocumentosComponent {
       error: () => {
         this.estados[tipoDocumentoId] = 'Error';
         this.errores[tipoDocumentoId] = 'No se pudo preparar la carga. Intentá nuevamente.';
+      },
+    });
+  }
+
+  confirmar() {
+    if (this.documentosCargados !== this.requisitos.length || this.confirmando) return;
+    const version = Number(localStorage.getItem('solicitudVersion') ?? 1);
+    this.confirmando = true;
+    this.service.confirmar(this.solicitudId, version).subscribe({
+      next: result => {
+        this.confirmando = false;
+        this.confirmado = true;
+        localStorage.setItem('solicitudVersion', String((Number(localStorage.getItem('solicitudVersion') ?? 1)) + 1));
+        this.mensaje = `Preinscripción confirmada: ${result.numero}.`;
+        this.router.navigate(['/portal/seguimiento', this.solicitudId]);
+      },
+      error: () => {
+        this.confirmando = false;
+        this.errores[0] = 'No se pudo confirmar. Verificá que todos los documentos estén cargados.';
       },
     });
   }
