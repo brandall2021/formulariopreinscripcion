@@ -2,6 +2,7 @@ import { Component, inject } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router } from '@angular/router';
 import { ApiService } from '../core/api.service';
+import { SolicitudService } from '../portal/solicitud.service';
 import { AuthService } from '../core/auth.service';
 
 @Component({
@@ -49,6 +50,7 @@ export class LoginComponent {
   private fb = inject(FormBuilder);
   private api = inject(ApiService);
   private auth = inject(AuthService);
+  private solicitudes = inject(SolicitudService);
   private router = inject(Router);
   loading = false;
   sent = false;
@@ -77,10 +79,24 @@ export class LoginComponent {
     this.api.post<{ access_token: string }>('/auth/verify-otp', payload).subscribe({
       next: ({ access_token }) => {
         this.auth.setToken(access_token);
-        this.loading = false;
-        this.router.navigateByUrl('/portal/datos');
+        this.abrirSolicitud();
       },
       error: () => { this.error = 'Código inválido o vencido.'; this.loading = false; },
+    });
+  }
+  private abrirSolicitud() {
+    this.solicitudes.mia().subscribe({
+      next: sol => {
+        this.loading = false;
+        void this.router.navigate(sol.estado === 'BORRADOR' || sol.estado === 'PENDIENTE_ALUMNO'
+          ? ['/portal/documentos', sol.id]
+          : ['/portal/seguimiento', sol.id]);
+      },
+      error: ({ status }) => {
+        this.loading = false;
+        if (status === 404) void this.router.navigateByUrl('/portal/datos');
+        else this.error = 'No pudimos recuperar tu solicitud. Volvé a intentar.';
+      },
     });
   }
 }

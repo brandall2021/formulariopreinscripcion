@@ -1,9 +1,10 @@
 import { Component, inject } from '@angular/core';
-import { Router } from '@angular/router';
-import { Requisito, SolicitudService } from '../solicitud.service';
+import { ActivatedRoute, Router } from '@angular/router';
+import { forkJoin, Observable } from 'rxjs';
+import { SolicitudService } from '../solicitud.service';
 import { validateDocument } from './document-validation';
 
-type RequisitoVista = Requisito & { nombre: string; descripcion?: string };
+type RequisitoVista = { tipo_documento_id: number; nombre: string };
 
 @Component({
   selector: 'app-documentos',
@@ -21,7 +22,7 @@ type RequisitoVista = Requisito & { nombre: string; descripcion?: string };
     <div class="stack">
       <header>
         <p class="muted">Paso 2 de 3 · Documentación</p>
-        <h1>Subí tus documentos</h1>
+        <h1>{{ corrigiendo ? 'Corregí tus documentos' : 'Subí tus documentos' }}</h1>
         <p>Se aceptan PDF, JPG y PNG de hasta 10 MB.</p>
       </header>
       @for (req of requisitos; track req.tipo_documento_id) {
@@ -30,6 +31,9 @@ type RequisitoVista = Requisito & { nombre: string; descripcion?: string };
             <div><h2>{{ req.nombre }}</h2><p class="muted">Archivo obligatorio</p></div>
             <span class="status">{{ estados[req.tipo_documento_id] || 'Pendiente' }}</span>
           </div>
+          @for (motivo of motivos[req.tipo_documento_id] ?? []; track $index) {
+            <p class="error">{{ motivo }}</p>
+          }
           <label [for]="'doc-' + req.tipo_documento_id">Seleccionar archivo
             <input [id]="'doc-' + req.tipo_documento_id" type="file" accept=".pdf,.jpg,.jpeg,.png"
                    [disabled]="confirmando || confirmado || estados[req.tipo_documento_id] === 'Subiendo…'"
@@ -43,13 +47,13 @@ type RequisitoVista = Requisito & { nombre: string; descripcion?: string };
         </p>
       }
       <section class="confirmacion" aria-labelledby="confirmacion-titulo">
-        <h2 id="confirmacion-titulo">Confirmar preinscripción</h2>
-        <p class="muted">Cuando confirmes, la solicitud pasará a validación documental.</p>
+        <h2 id="confirmacion-titulo">{{ corrigiendo ? 'Reenviar documentación' : 'Confirmar preinscripción' }}</h2>
+        <p class="muted">{{ corrigiendo ? 'Reemplazá los documentos observados y reenviá la solicitud.' : 'Cuando confirmes, la solicitud pasará a validación documental.' }}</p>
         <p id="confirmacion-progreso" role="status">
           @if (cargandoRequisitos) {
             Cargando los requisitos para confirmar…
           } @else if (requisitos.length) {
-            {{ documentosCargados }} de {{ requisitos.length }} documentos obligatorios cargados.
+            {{ documentosCargados }} de {{ requisitos.length }} documentos {{ corrigiendo ? 'observados reemplazados' : 'obligatorios cargados' }}.
             @if (documentosCargados < requisitos.length) {
               Cargá los archivos pendientes para habilitar el botón.
             }
@@ -59,7 +63,7 @@ type RequisitoVista = Requisito & { nombre: string; descripcion?: string };
         </p>
         <button type="button" aria-describedby="confirmacion-progreso" (click)="confirmar()"
           [disabled]="!puedeConfirmar">
-          {{ confirmado ? 'Preinscripción confirmada' : (confirmando ? 'Confirmando…' : 'Confirmar preinscripción') }}
+          {{ confirmado ? 'Preinscripción confirmada' : (confirmando ? 'Enviando…' : (corrigiendo ? 'Reenviar documentación' : 'Confirmar preinscripción')) }}
         </button>
         @if (errores[0]) { <p class="error" role="alert">{{ errores[0] }}</p> }
       </section>
@@ -76,26 +80,55 @@ export class DocumentosComponent {
   mensaje = '';
   confirmando = false;
   confirmado = false;
-  solicitudId = Number(localStorage.getItem('solicitudId') ?? 0);
+  private route = inject(ActivatedRoute);
+  solicitudId = Number(this.route.snapshot.paramMap.get('id') ?? localStorage.getItem('solicitudId'));
   cargandoRequisitos = true;
+  corrigiendo = false;
+  version = 1;
+  motivos: Partial<Record<number, string[]>> = {};
+
   constructor() {
-    const convocatoria = Number(localStorage.getItem('convocatoriaId') ?? 0);
-    const carrera = Number(localStorage.getItem('carreraId') ?? 0);
-    const tipo = localStorage.getItem('tipoIngresante') ?? 'nuevo';
-    this.service.tiposDocumentos().subscribe({
-      next: tipos => this.service.requisitos(convocatoria, carrera, tipo).subscribe({
-        next: requisitos => {
-          const porId = new Map(tipos.map(item => [item.id, item]));
-          this.requisitos = requisitos.filter(item => item.obligatorio).map(item => ({
-            ...item, nombre: porId.get(item.tipo_documento_id)?.nombre ?? 'Documento requerido',
-            descripcion: porId.get(item.tipo_documento_id)?.descripcion,
-          }));
-          this.cargandoRequisitos = false;
-        },
-        error: () => { this.cargandoRequisitos = false; this.errores[0] = 'No se pudieron cargar los requisitos.'; },
-      }),
-      error: () => { this.cargandoRequisitos = false; this.errores[0] = 'No se pudieron cargar los tipos de documento.'; },
+    if (!Number.isSafeInteger(this.solicitudId) || this.solicitudId <= 0) {
+      this.errorCarga();
+      return;
+    }
+    this.service.contextoCarga(this.solicitudId).subscribe({
+      next: contexto => {
+        if (contexto.estado !== 'BORRADOR' && contexto.estado !== 'PENDIENTE_ALUMNO') {
+          void this.router.navigate(['/portal/seguimiento', this.solicitudId]);
+          return;
+        }
+        this.version = contexto.version;
+        this.corrigiendo = contexto.estado === 'PENDIENTE_ALUMNO';
+        for (const id of contexto.cargados) this.estados[id] = 'Cargado';
+        for (const obs of contexto.observaciones) {
+          (this.motivos[obs.tipo_documento_id] ??= []).push(obs.motivo);
+        }
+        forkJoin({
+          tipos: this.service.tiposDocumentos(),
+          requisitos: this.service.requisitos(contexto.convocatoria_id, contexto.carrera_id, contexto.tipo_ingresante),
+        }).subscribe({
+          next: ({ tipos, requisitos }) => {
+            const porId = new Map(tipos.map(item => [item.id, item]));
+            const tiposRequeridos = this.corrigiendo
+              ? Object.keys(this.motivos).map(Number)
+              : [...new Set(requisitos.filter(req => req.obligatorio).map(req => req.tipo_documento_id))];
+            this.requisitos = tiposRequeridos.map(id => ({
+              tipo_documento_id: id,
+              nombre: porId.get(id)?.nombre ?? 'Documento requerido',
+            }));
+            this.cargandoRequisitos = false;
+          },
+          error: () => this.errorCarga(),
+        });
+      },
+      error: () => this.errorCarga(),
     });
+  }
+
+  private errorCarga() {
+    this.cargandoRequisitos = false;
+    this.errores[0] = 'No se pudo recuperar la documentación de tu solicitud.';
   }
   get documentosCargados() {
     return this.requisitos.filter(req => this.estados[req.tipo_documento_id] === 'Cargado').length;
@@ -135,19 +168,21 @@ export class DocumentosComponent {
 
   confirmar() {
     if (!this.puedeConfirmar) return;
-    const version = Number(localStorage.getItem('solicitudVersion') ?? 1);
     this.confirmando = true;
-    this.service.confirmar(this.solicitudId, version).subscribe({
-      next: result => {
+    delete this.errores[0];
+    const enviar: Observable<unknown> = this.corrigiendo
+      ? this.service.reenviar(this.solicitudId, this.version)
+      : this.service.confirmar(this.solicitudId, this.version);
+    enviar.subscribe({
+      next: () => {
         this.confirmando = false;
         this.confirmado = true;
-        localStorage.setItem('solicitudVersion', String((Number(localStorage.getItem('solicitudVersion') ?? 1)) + 1));
-        this.mensaje = `Preinscripción confirmada: ${result.numero}.`;
+
         this.router.navigate(['/portal/seguimiento', this.solicitudId]);
       },
-      error: () => {
+      error: ({ error }) => {
         this.confirmando = false;
-        this.errores[0] = 'No se pudo confirmar. Verificá que todos los documentos estén cargados.';
+        this.errores[0] = typeof error?.detail === 'string' ? error.detail : 'No se pudo enviar la documentación. Intentá nuevamente.';
       },
     });
   }

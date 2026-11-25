@@ -54,8 +54,10 @@ const estados: Record<string, [string, string]> = {
           <span class="status">Estado de la solicitud</span>
           <h2 id="estado-titulo">{{ estado[0] }}</h2>
           <p>{{ estado[1] }}</p>
-          @if (solicitud.estado === 'BORRADOR' && puedeRetomar) {
-            <a class="button" routerLink="/portal/documentos">Continuar con la documentación</a>
+          @if (solicitud.estado === 'BORRADOR' || solicitud.estado === 'PENDIENTE_ALUMNO') {
+            <a class="button" [routerLink]="['/portal/documentos', solicitud.id]">
+              {{ solicitud.estado === 'BORRADOR' ? 'Continuar con la documentación' : 'Corregir documentos' }}
+            </a>
           }
         </section>
         @if (observados.length) {
@@ -85,10 +87,6 @@ export class SeguimientoComponent implements OnInit {
 
   get estado() {
     return estados[this.solicitud?.estado ?? ''] ?? ['Estado sin detalle', 'Volvé a consultar más tarde.'];
-  }
-
-  get puedeRetomar() {
-    return Number(localStorage.getItem('solicitudId')) === this.id;
   }
 
   ngOnInit() {

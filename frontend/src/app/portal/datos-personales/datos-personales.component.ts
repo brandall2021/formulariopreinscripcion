@@ -119,7 +119,7 @@ export class DatosPersonalesComponent implements OnInit {
         localStorage.setItem('tipoIngresante', this.form.controls.tipo_ingresante.value);
         this.loading = false; this.saved = true;
         void this.router.navigate(sol.estado === 'BORRADOR'
-          ? ['/portal/documentos']
+          ? ['/portal/documentos', sol.id]
           : ['/portal/seguimiento', sol.id]);
       },
       error: ({ status, error }) => {

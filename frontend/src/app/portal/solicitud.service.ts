@@ -44,6 +44,18 @@ export class SolicitudService {
     return this.api.post<Solicitud>('/solicitudes', data);
   }
 
+  mia() {
+    return this.api.get<Solicitud>('/solicitudes/mia');
+  }
+
+  contextoCarga(id: number) {
+    return this.api.get<{
+      convocatoria_id: number; carrera_id: number; tipo_ingresante: string;
+      estado: string; version: number; cargados: number[];
+      observaciones: { tipo_documento_id: number; motivo: string }[];
+    }>(`/solicitudes/${id}/carga`);
+  }
+
   obtener(id: number) {
     return this.api.get<Solicitud>(`/solicitudes/${id}`);
   }

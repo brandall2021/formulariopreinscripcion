@@ -1,12 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from app.alumnos.models import Alumno
 from app.auditorias.models import Observacion
 from app.auth.deps import get_current_claims, require_roles
 from app.catalogos.models import Carrera, Convocatoria
-from app.documentos.models import Documento
+from app.documentos.models import Documento, DocumentoVersion
+from app.documentos.router import get_store
+from app.infra.storage import ObjectStore
 from app.infra.db import get_db
 from app.notificaciones.models import Notificacion
 from app.solicitudes import service
@@ -115,15 +118,44 @@ def documentos_observados(solicitud_id: int, db: Session = Depends(get_db), clai
     return [{"documento_id": doc.id, "tipo_documento_id": doc.tipo_documento_id,
              "motivo": obs.motivo} for obs, doc in filas]
 
+@router.get("/{solicitud_id}/carga")
+def contexto_carga(solicitud_id: int, db: Session = Depends(get_db),
+                   store: ObjectStore = Depends(get_store),
+                   claims: dict = Depends(require_roles("alumno"))):
+    sol = db.get(Solicitud, solicitud_id)
+    if sol is None:
+        raise HTTPException(404, "Solicitud no encontrada.")
+    _assert_solicitud_access(sol, claims, db)
+    observaciones = documentos_observados(solicitud_id, db, claims)
+    filas = (db.query(Documento, DocumentoVersion)
+             .join(DocumentoVersion, (Documento.id == DocumentoVersion.documento_id)
+                   & (Documento.version == DocumentoVersion.numero))
+             .filter(Documento.solicitud_id == solicitud_id).all())
+    cargados = [doc.tipo_documento_id for doc, version in filas
+                if doc.estado in ("RECIBIDO", "REEMPLAZADO") and store.exists(version.object_key)]
+    return {"convocatoria_id": sol.convocatoria_id, "carrera_id": sol.carrera_id,
+            "tipo_ingresante": sol.tipo_ingresante, "estado": sol.estado,
+            "version": sol.version, "cargados": cargados, "observaciones": observaciones}
+
+
 @router.post("/{solicitud_id}/reenviar")
 def reenviar(solicitud_id: int, payload: ReenviarIn, db: Session = Depends(get_db), claims: dict = Depends(require_roles("alumno"))):
-    sol = db.get(Solicitud, solicitud_id)
+    sol = db.execute(select(Solicitud).where(
+        Solicitud.id == solicitud_id).with_for_update()).scalar_one_or_none()
     if sol is None:
         raise HTTPException(404, "solicitud no encontrada")
     _assert_solicitud_access(sol, claims, db)
     if sol.version != payload.version:
         raise HTTPException(409, "versión obsoleta")
-    registrar_transicion(db, sol, "REENVIADA", claims.get("sub", "alumno"))
+    if sol.estado != "PENDIENTE_ALUMNO":
+        raise HTTPException(409, "La solicitud no está pendiente de corrección.")
+    pendientes = (db.query(Observacion.id).join(Documento)
+                  .filter(Documento.solicitud_id == solicitud_id,
+                          Documento.estado != "REEMPLAZADO",
+                          Observacion.resuelta_en.is_(None)).first())
+    if pendientes is not None:
+        raise HTTPException(409, "Reemplazá todos los documentos observados antes de reenviar.")
+    registrar_transicion(db, sol, "REENVIADA", claims.get("sub", "alumno"), commit=False)
     db.add(Notificacion(
         solicitud_id=solicitud_id, evento="REENVIADA", canal="email",
         destinatario="auditores@face.unt.edu.ar", estado="PENDIENTE",
