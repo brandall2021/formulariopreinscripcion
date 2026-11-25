@@ -118,12 +118,18 @@ export class DatosPersonalesComponent implements OnInit {
         localStorage.setItem('carreraId', String(this.form.controls.carrera_id.value));
         localStorage.setItem('tipoIngresante', this.form.controls.tipo_ingresante.value);
         this.loading = false; this.saved = true;
-        void this.router.navigate(['/portal/documentos']);
+        void this.router.navigate(sol.estado === 'BORRADOR'
+          ? ['/portal/documentos']
+          : ['/portal/seguimiento', sol.id]);
       },
       error: ({ status, error }) => {
         this.loading = false;
         if (status === 401 || status === 403) {
           this.error = 'Tu sesión venció. Volvé a ingresar con tu correo.';
+        } else if (status === 409) {
+          this.error = typeof error?.detail === 'string'
+            ? error.detail
+            : 'Ya existe una preinscripción para ese DNI en esta convocatoria.';
         } else if (status === 422) {
           this.error = typeof error?.detail === 'string'
             ? error.detail

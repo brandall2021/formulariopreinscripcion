@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from app.alumnos.models import Alumno
 from app.auditorias.models import Observacion
@@ -43,7 +44,22 @@ def crear(data: SolicitudIn, db: Session = Depends(get_db), claims: dict = Depen
         raise HTTPException(422, "Seleccioná una carrera válida.")
     payload = data.model_dump()
     payload["email"] = claims.get("sub", str(data.email))
-    return service.crear_borrador(db, payload["email"], payload)
+    try:
+        return service.crear_borrador(db, payload["email"], payload)
+    except IntegrityError as exc:
+        db.rollback()
+        if getattr(getattr(exc.orig, "diag", None), "constraint_name", None) != "solicitudes_convocatoria_id_dni_key":
+            raise
+        email = payload["email"].strip().lower()
+        existente = (db.query(Solicitud).join(Alumno)
+                     .filter(Solicitud.convocatoria_id == data.convocatoria_id,
+                             Alumno.email == email,
+                             Solicitud.dni == Alumno.dni).first())
+        if (existente is not None and existente.carrera_id == data.carrera_id
+                and existente.tipo_ingresante == data.tipo_ingresante):
+            return existente
+        raise HTTPException(409, "Ya existe una preinscripción para ese DNI en esta convocatoria. "
+                                 "Si necesitás modificarla, contactá a la Facultad.") from exc
 
 @router.get("/mia", response_model=SolicitudOut)
 def mia(db: Session = Depends(get_db), claims: dict = Depends(require_roles("alumno"))):
