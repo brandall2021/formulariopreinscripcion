@@ -1,0 +1,74 @@
+services:
+  api:
+    image: face-preinscripciones-api:${TAG:-latest}
+    build:
+      context: ./backend
+    restart: unless-stopped
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    environment:
+      DATABASE_URL: postgresql+psycopg://${FACE_DB_USER}:${FACE_DB_PASSWORD}@sistemas-postgresql-gmfeht:5432/${FACE_DB_NAME}
+      SECRET_KEY: ${SECRET_KEY}
+      JWT_ALG: ${JWT_ALG}
+      MINIO_ENDPOINT: minio:9000
+      MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT}
+      MINIO_ACCESS_KEY: ${FACE_MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${FACE_MINIO_SECRET_KEY}
+      MINIO_BUCKET: ${FACE_MINIO_BUCKET}
+      REDIS_URL: redis://:DtezV3H3guXrDgOIzS3y9K6R0KHNpbXgFozYVhzP@metadataia-redis-rghty5:6379/1
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+      CORS_ORIGINS: https://${FACE_DOMAIN}
+    expose:
+      - "8000"
+    networks:
+      - default
+      - dokploy-network
+
+  worker:
+    image: face-preinscripciones-worker:${TAG:-latest}
+    build:
+      context: ./backend
+    restart: unless-stopped
+    command: celery -A app.infra.celery_app:celery_app worker --loglevel=info -I worker.tasks
+    environment:
+      DATABASE_URL: postgresql+psycopg://${FACE_DB_USER}:${FACE_DB_PASSWORD}@sistemas-postgresql-gmfeht:5432/${FACE_DB_NAME}
+      SECRET_KEY: ${SECRET_KEY}
+      JWT_ALG: ${JWT_ALG}
+      MINIO_ENDPOINT: minio:9000
+      MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT}
+      MINIO_ACCESS_KEY: ${FACE_MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${FACE_MINIO_SECRET_KEY}
+      MINIO_BUCKET: ${FACE_MINIO_BUCKET}
+      REDIS_URL: redis://:DtezV3H3guXrDgOIzS3y9K6R0KHNpbXgFozYVhzP@metadataia-redis-rghty5:6379/1
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+    networks:
+      - default
+      - dokploy-network
+
+  frontend:
+    image: face-preinscripciones-frontend:${TAG:-latest}
+    build:
+      context: ./frontend
+      args:
+        API_URL: https://${FACE_API_DOMAIN}
+    restart: unless-stopped
+    expose:
+      - "80"
+    networks:
+      - default
+      - dokploy-network
+
+  mailpit:
+    image: axllent/mailpit:v1.28
+    restart: unless-stopped
+    expose:
+      - "8025"
+      - "1025"
+    networks:
+      - default
+      - dokploy-network
+
+networks:
+  dokploy-network:
+    external: true
