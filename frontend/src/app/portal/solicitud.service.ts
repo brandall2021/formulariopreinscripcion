@@ -51,7 +51,7 @@ export class SolicitudService {
   contextoCarga(id: number) {
     return this.api.get<{
       convocatoria_id: number; carrera_id: number; tipo_ingresante: string;
-      estado: string; version: number; cargados: number[];
+      estado: string; version: number; discapacidad: boolean; cargados: number[];
       observaciones: { tipo_documento_id: number; motivo: string }[];
     }>(`/solicitudes/${id}/carga`);
   }

@@ -22,6 +22,7 @@ describe('DatosPersonalesComponent', () => {
     component.form.setValue({
       apellido: 'Pérez', nombres: 'Ana', dni: '30123456',
       email: 'ana@example.com', celular: '+5493815555555',
+      fecha_nacimiento: '2000-01-01', domicilio: 'Av. Independencia 1900', discapacidad: false,
       convocatoria_id: 1, carrera_id: 1, tipo_ingresante: 'nuevo', acepta_declaracion: false,
     });
     expect(component.form.valid).toBeFalse();

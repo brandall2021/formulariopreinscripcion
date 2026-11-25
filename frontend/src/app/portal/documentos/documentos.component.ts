@@ -113,6 +113,14 @@ export class DocumentosComponent {
             const tiposRequeridos = this.corrigiendo
               ? Object.keys(this.motivos).map(Number)
               : [...new Set(requisitos.filter(req => req.obligatorio).map(req => req.tipo_documento_id))];
+            if (!this.corrigiendo && contexto.discapacidad) {
+              const cud = tipos.find(tipo => tipo.codigo === 'cud');
+              if (!cud) {
+                this.errorCarga();
+                return;
+              }
+              if (!tiposRequeridos.includes(cud.id)) tiposRequeridos.push(cud.id);
+            }
             this.requisitos = tiposRequeridos.map(id => ({
               tipo_documento_id: id,
               nombre: porId.get(id)?.nombre ?? 'Documento requerido',

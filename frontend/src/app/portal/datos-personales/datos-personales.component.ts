@@ -43,6 +43,22 @@ import { SolicitudService } from '../solicitud.service';
           <label for="celular">Celular
             <input id="celular" formControlName="celular" type="tel" autocomplete="tel" placeholder="Ej. +54 9 381 555 0123" maxlength="30">
           </label>
+          <label for="nacimiento">Fecha de nacimiento
+            <input id="nacimiento" formControlName="fecha_nacimiento" type="date" autocomplete="bday">
+          </label>
+          <label for="domicilio">Domicilio
+            <input id="domicilio" formControlName="domicilio" autocomplete="street-address"
+                   placeholder="Ej. Av. Independencia 1900, San Miguel de Tucumán" maxlength="300">
+          </label>
+          <label for="discapacidad">¿Tenés una discapacidad?
+            <select id="discapacidad" formControlName="discapacidad">
+              <option [ngValue]="false">No</option>
+              <option [ngValue]="true">Sí</option>
+            </select>
+            @if (form.controls.discapacidad.value) {
+              <small class="muted">En el próximo paso tendrás que subir el Certificado Único de Discapacidad (CUD).</small>
+            }
+          </label>
           <label for="tipo">Tipo de ingresante
             <select id="tipo" formControlName="tipo_ingresante">
               <option value="nuevo">Nuevo ingreso</option>
@@ -91,6 +107,9 @@ export class DatosPersonalesComponent implements OnInit {
     dni: ['', Validators.required],
     email: [this.auth.claims()?.sub ?? '', [Validators.required, Validators.email]],
     celular: ['', Validators.required],
+    fecha_nacimiento: ['', Validators.required],
+    domicilio: ['', Validators.required],
+    discapacidad: [false],
     convocatoria_id: [0, Validators.min(1)],
     carrera_id: [0, Validators.min(1)],
     tipo_ingresante: ['nuevo', Validators.required],

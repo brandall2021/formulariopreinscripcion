@@ -2,7 +2,7 @@ import logging
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 from app.alumnos.models import Alumno
-from app.catalogos.models import Convocatoria, RequisitoDocumental
+from app.catalogos.models import Convocatoria, RequisitoDocumental, TipoDocumento
 from app.documentos.models import Documento
 from app.historial.models import HistorialEstado
 from app.solicitudes.models import Solicitud
@@ -38,6 +38,9 @@ def crear_borrador(db: Session, email: str, data: dict) -> Solicitud:
                         discapacidad=bool(data.get("discapacidad", False)))
         db.add(alumno)
         db.flush()
+    for campo in ("fecha_nacimiento", "domicilio", "discapacidad"):
+        if data.get(campo) is not None:
+            setattr(alumno, campo, data[campo])
     conv = db.get(Convocatoria, data["convocatoria_id"])
     sol = Solicitud(numero=None, alumno_id=alumno.id, convocatoria_id=conv.id,
                     carrera_id=data["carrera_id"],
@@ -66,6 +69,12 @@ def confirmar(db: Session, solicitud_id: int, version: int,
         convocatoria_id=sol.convocatoria_id, carrera_id=sol.carrera_id,
         tipo_ingresante=sol.tipo_ingresante, obligatorio=True).all()
     ids = {r.tipo_documento_id for r in requisitos}
+    alumno = db.get(Alumno, sol.alumno_id)
+    if alumno.discapacidad:
+        cud = db.query(TipoDocumento).filter_by(codigo="cud").one_or_none()
+        if cud is None:
+            raise ValueError("El certificado CUD no está configurado. Contactá a la Facultad.")
+        ids.add(cud.id)
     cargados = {d.tipo_documento_id for d in db.query(Documento).filter_by(
         solicitud_id=sol.id).all() if d.estado != "PENDIENTE"}
     if ids - cargados:

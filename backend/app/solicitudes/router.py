@@ -1,6 +1,6 @@
-from datetime import datetime
+from datetime import date, datetime
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -27,8 +27,8 @@ class SolicitudIn(BaseModel):
     dni: str
     email: EmailStr
     celular: str
-    fecha_nacimiento: str | None = None
-    domicilio: str | None = None
+    fecha_nacimiento: date | None = None
+    domicilio: str | None = Field(default=None, max_length=300)
     discapacidad: bool = False
     acepta_declaracion: bool = False
     convocatoria_id: int
@@ -49,7 +49,9 @@ def crear(data: SolicitudIn, db: Session = Depends(get_db), claims: dict = Depen
         raise HTTPException(422, "Seleccioná una convocatoria válida.")
     if db.get(Carrera, data.carrera_id) is None:
         raise HTTPException(422, "Seleccioná una carrera válida.")
-    payload = data.model_dump()
+    if data.fecha_nacimiento and data.fecha_nacimiento > date.today():
+        raise HTTPException(422, "La fecha de nacimiento no puede ser futura.")
+    payload = data.model_dump(mode="json")
     payload['declaracion_aceptada_en'] = datetime.utcnow()
     payload["email"] = claims.get("sub", str(data.email))
     try:
@@ -65,6 +67,14 @@ def crear(data: SolicitudIn, db: Session = Depends(get_db), claims: dict = Depen
                              Solicitud.dni == Alumno.dni).first())
         if (existente is not None and existente.carrera_id == data.carrera_id
                 and existente.tipo_ingresante == data.tipo_ingresante):
+            if existente.estado == "BORRADOR":
+                alumno = db.get(Alumno, existente.alumno_id)
+                for campo in ("fecha_nacimiento", "domicilio", "discapacidad"):
+                    if payload.get(campo) is not None:
+                        setattr(alumno, campo, payload[campo])
+                if existente.declaracion_aceptada_en is None:
+                    existente.declaracion_aceptada_en = payload["declaracion_aceptada_en"]
+                db.commit()
             return existente
         raise HTTPException(409, "Ya existe una preinscripción para ese DNI en esta convocatoria. "
                                  "Si necesitás modificarla, contactá a la Facultad.") from exc
@@ -131,6 +141,7 @@ def contexto_carga(solicitud_id: int, db: Session = Depends(get_db),
     if sol is None:
         raise HTTPException(404, "Solicitud no encontrada.")
     _assert_solicitud_access(sol, claims, db)
+    alumno = db.get(Alumno, sol.alumno_id)
     observaciones = documentos_observados(solicitud_id, db, claims)
     filas = (db.query(Documento, DocumentoVersion)
              .join(DocumentoVersion, (Documento.id == DocumentoVersion.documento_id)
@@ -140,7 +151,7 @@ def contexto_carga(solicitud_id: int, db: Session = Depends(get_db),
                 if doc.estado in ("RECIBIDO", "REEMPLAZADO") and store.exists(version.object_key)]
     return {"convocatoria_id": sol.convocatoria_id, "carrera_id": sol.carrera_id,
             "tipo_ingresante": sol.tipo_ingresante, "estado": sol.estado,
-            "version": sol.version, "cargados": cargados, "observaciones": observaciones}
+            "discapacidad": alumno.discapacidad, "version": sol.version, "cargados": cargados, "observaciones": observaciones}
 
 
 @router.post("/{solicitud_id}/reenviar")

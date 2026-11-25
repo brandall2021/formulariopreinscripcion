@@ -1,4 +1,5 @@
 import hashlib
+import re
 from sqlalchemy.orm import Session
 from app.catalogos.models import TipoDocumento
 from app.documentos.models import Documento, DocumentoVersion
@@ -7,6 +8,12 @@ from app.solicitudes.models import Solicitud
 from app.solicitudes.service import registrar_transicion
 
 EXTENSIONES = {"application/pdf": "pdf", "image/jpeg": "jpg", "image/png": "png"}
+
+def nombre_archivo(dni: str, codigo: str, extension: str, sufijo: str = "") -> str:
+    dni = re.sub(r"[^0-9]", "", dni) or "sin-dni"
+    codigo = re.sub(r"[^a-z0-9]+", "-", codigo.lower()).strip("-") or "documento"
+    return f"{dni}-{codigo}{sufijo}.{extension}"
+
 
 def registrar_documento(db: Session, solicitud_id: int, tipo_documento_id: int,
                         filename: str, content_type: str, size: int, checksum: str,
@@ -30,7 +37,9 @@ def registrar_documento(db: Session, solicitud_id: int, tipo_documento_id: int,
     elif doc.estado in ("APROBADO", "OBSERVADO", "REEMPLAZADO"):
         doc.estado = "REEMPLAZADO"
     numero = doc.version + 1
-    key = f"solicitudes/{solicitud_id}/{td.codigo}/v{numero}.{EXTENSIONES[content_type]}"
+    solicitud = db.get(Solicitud, solicitud_id)
+    nombre = nombre_archivo(solicitud.dni, td.codigo, EXTENSIONES[content_type])
+    key = f"solicitudes/{solicitud_id}/{td.id}/v{numero}/{nombre}"
     if contenido is not None:
         store.put_bytes(key, contenido)
     db.add(DocumentoVersion(documento_id=doc.id, numero=numero, object_key=key,

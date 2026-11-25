@@ -57,7 +57,7 @@ def test_registro_y_validacion(contexto, db: Session):
                               len(data), checksum, "ana-doc@example.com", store)
     assert doc.estado == "RECIBIDO"
     version = db.query(DocumentoVersion).filter_by(documento_id=doc.id).one()
-    assert version.object_key.startswith(f"solicitudes/{sol.id}/dni/v1.")
+    assert version.object_key == f"solicitudes/{sol.id}/{td.id}/v1/{sol.dni}-dni.pdf"
     store.put_bytes(version.object_key, data)
     validar_version(db, version.id, store)
     assert db.get(Documento, doc.id).estado == "EN_REVISION"
