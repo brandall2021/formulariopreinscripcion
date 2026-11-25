@@ -29,4 +29,16 @@ describe('SolicitudService', () => {
     const request = http.expectOne(req => req.url.endsWith('/catalogos/carreras'));
     request.flush([{ id: 1, nombre: 'Contador Público', codigo: 'CP', activa: true }]);
   });
+
+  it('obtiene requisitos con los filtros de la solicitud', () => {
+    service.requisitos(2, 3, 'nuevo').subscribe(items => expect(items[0].tipo_documento_id).toBe(9));
+    const request = http.expectOne(req =>
+      req.url.endsWith('/catalogos/requisitos')
+      && req.params.get('convocatoria_id') === '2'
+      && req.params.get('carrera_id') === '3'
+      && req.params.get('tipo_ingresante') === 'nuevo');
+    expect(request.request.method).toBe('GET');
+    request.flush([{ id: 1, convocatoria_id: 2, carrera_id: 3,
+      tipo_ingresante: 'nuevo', tipo_documento_id: 9, obligatorio: true }]);
+  });
 });

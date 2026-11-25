@@ -1,17 +1,10 @@
 import { Component, inject } from '@angular/core';
 import { Router } from '@angular/router';
-import { SolicitudService } from '../solicitud.service';
+import { Requisito, SolicitudService } from '../solicitud.service';
 import { sha256 } from './checksum';
 import { validateDocument } from './document-validation';
 
-const REQUISITOS = [
-  { id: 1, codigo: 'dni', nombre: 'DNI (frente y dorso)' },
-  { id: 2, codigo: 'foto_carnet', nombre: 'Foto carnet' },
-  { id: 3, codigo: 'acta_nacimiento', nombre: 'Acta de nacimiento' },
-  { id: 4, codigo: 'titulo_secundario', nombre: 'Título secundario' },
-  { id: 5, codigo: 'formulario_siu', nombre: 'Formulario SIU Guaraní' },
-  { id: 6, codigo: 'comprobante_pago', nombre: 'Comprobante de pago' },
-];
+type RequisitoVista = Requisito & { nombre: string; descripcion?: string };
 
 @Component({
   selector: 'app-documentos',
@@ -23,19 +16,23 @@ const REQUISITOS = [
         <h1>Subí tus documentos</h1>
         <p>Se aceptan PDF, JPG y PNG de hasta 10 MB.</p>
       </header>
-      @for (req of requisitos; track req.id) {
+      @for (req of requisitos; track req.tipo_documento_id) {
         <section>
           <div style="display:flex;justify-content:space-between;gap:12px;align-items:start">
             <div><h2>{{ req.nombre }}</h2><p class="muted">Archivo obligatorio</p></div>
-            <span class="status">{{ estados[req.id] || 'Pendiente' }}</span>
+            <span class="status">{{ estados[req.tipo_documento_id] || 'Pendiente' }}</span>
           </div>
-          <label [for]="'doc-' + req.id">Seleccionar archivo
-            <input [id]="'doc-' + req.id" type="file" accept=".pdf,.jpg,.jpeg,.png"
-                   (change)="subir(req.id, $event)">
+          <label [for]="'doc-' + req.tipo_documento_id">Seleccionar archivo
+            <input [id]="'doc-' + req.tipo_documento_id" type="file" accept=".pdf,.jpg,.jpeg,.png"
+                   (change)="subir(req.tipo_documento_id, $event)">
           </label>
           @if (errores[req.id]) { <p class="error" role="alert">{{ errores[req.id] }}</p> }
         </section>
-      } @empty { <p class="card">No hay requisitos disponibles.</p> }
+      } @empty {
+        <p class="card" role="status">
+          {{ cargandoRequisitos ? 'Cargando requisitos…' : 'No hay requisitos disponibles.' }}
+        </p>
+      }
       <section>
         <h2>Confirmar preinscripción</h2>
         <p class="muted">Cuando confirmes, la solicitud pasará a validación documental.</p>
@@ -52,13 +49,33 @@ const REQUISITOS = [
 export class DocumentosComponent {
   private service = inject(SolicitudService);
   private router = inject(Router);
-  requisitos = REQUISITOS;
+  requisitos: RequisitoVista[] = [];
   estados: Record<number, string> = {};
   errores: Record<number, string> = {};
   mensaje = '';
   confirmando = false;
   confirmado = false;
   solicitudId = Number(localStorage.getItem('solicitudId') ?? 0);
+  cargandoRequisitos = true;
+  constructor() {
+    const convocatoria = Number(localStorage.getItem('convocatoriaId') ?? 0);
+    const carrera = Number(localStorage.getItem('carreraId') ?? 0);
+    const tipo = localStorage.getItem('tipoIngresante') ?? 'nuevo';
+    this.service.tiposDocumentos().subscribe({
+      next: tipos => this.service.requisitos(convocatoria, carrera, tipo).subscribe({
+        next: requisitos => {
+          const porId = new Map(tipos.map(item => [item.id, item]));
+          this.requisitos = requisitos.filter(item => item.obligatorio).map(item => ({
+            ...item, nombre: porId.get(item.tipo_documento_id)?.nombre ?? 'Documento requerido',
+            descripcion: porId.get(item.tipo_documento_id)?.descripcion,
+          }));
+          this.cargandoRequisitos = false;
+        },
+        error: () => { this.cargandoRequisitos = false; this.errores[0] = 'No se pudieron cargar los requisitos.'; },
+      }),
+      error: () => { this.cargandoRequisitos = false; this.errores[0] = 'No se pudieron cargar los tipos de documento.'; },
+    });
+  }
   get documentosCargados() {
     return this.requisitos.filter(req => this.estados[req.id] === 'Cargado').length;
   }

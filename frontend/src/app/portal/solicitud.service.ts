@@ -13,6 +13,14 @@ export interface Convocatoria {
 export interface Carrera {
   id: number; nombre: string; codigo: string; activa: boolean;
 }
+export interface Requisito {
+  id: number; convocatoria_id: number; carrera_id: number;
+  tipo_ingresante: string; tipo_documento_id: number; obligatorio: boolean;
+}
+export interface TipoDocumento {
+  id: number; codigo: string; nombre: string; descripcion?: string;
+  formatos: string; tamano_maximo_bytes: number;
+}
 
 @Injectable({ providedIn: 'root' })
 export class SolicitudService {
@@ -22,6 +30,14 @@ export class SolicitudService {
   }
   carreras() {
     return this.api.get<Carrera[]>('/catalogos/carreras');
+  }
+  requisitos(convocatoriaId: number, carreraId: number, tipoIngresante: string) {
+    return this.api.get<Requisito[]>('/catalogos/requisitos', {
+      convocatoria_id: convocatoriaId, carrera_id: carreraId, tipo_ingresante: tipoIngresante,
+    });
+  }
+  tiposDocumentos() {
+    return this.api.get<TipoDocumento[]>('/catalogos/tipos-documentos');
   }
 
   crear(data: Record<string, unknown>) {

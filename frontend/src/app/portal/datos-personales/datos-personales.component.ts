@@ -108,6 +108,9 @@ export class DatosPersonalesComponent implements OnInit {
       next: sol => {
         localStorage.setItem('solicitudId', String(sol.id));
         localStorage.setItem('solicitudVersion', String(sol.version ?? 1));
+        localStorage.setItem('convocatoriaId', String(this.form.controls.convocatoria_id.value));
+        localStorage.setItem('carreraId', String(this.form.controls.carrera_id.value));
+        localStorage.setItem('tipoIngresante', this.form.controls.tipo_ingresante.value);
         this.loading = false; this.saved = true;
       },
       error: () => { this.loading = false; this.error = 'No pudimos guardar tus datos. Intentá nuevamente.'; },
