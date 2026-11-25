@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { provideRouter } from '@angular/router';
 import { DatosPersonalesComponent } from './datos-personales.component';
 
 describe('DatosPersonalesComponent', () => {
@@ -9,7 +10,7 @@ describe('DatosPersonalesComponent', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [DatosPersonalesComponent],
-      providers: [provideHttpClient(), provideHttpClientTesting()],
+      providers: [provideRouter([]), provideHttpClient(), provideHttpClientTesting()],
     }).compileComponents();
     fixture = TestBed.createComponent(DatosPersonalesComponent);
     fixture.detectChanges();
@@ -24,5 +25,9 @@ describe('DatosPersonalesComponent', () => {
       convocatoria_id: 1, carrera_id: 1, tipo_ingresante: 'nuevo',
     });
     expect(component.form.valid).toBeTrue();
+    component.form.controls.convocatoria_id.setValue(0);
+    expect(component.form.controls.convocatoria_id.invalid).toBeTrue();
+    component.form.controls.carrera_id.setValue(0);
+    expect(component.form.controls.carrera_id.invalid).toBeTrue();
   });
 });

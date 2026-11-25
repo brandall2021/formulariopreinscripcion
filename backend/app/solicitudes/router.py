@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.alumnos.models import Alumno
 from app.auditorias.models import Observacion
 from app.auth.deps import get_current_claims, require_roles
+from app.catalogos.models import Carrera, Convocatoria
 from app.documentos.models import Documento
 from app.infra.db import get_db
 from app.notificaciones.models import Notificacion
@@ -36,6 +37,10 @@ class ReenviarIn(BaseModel):
 
 @router.post("", response_model=SolicitudOut)
 def crear(data: SolicitudIn, db: Session = Depends(get_db), claims: dict = Depends(require_roles("alumno"))):
+    if db.get(Convocatoria, data.convocatoria_id) is None:
+        raise HTTPException(422, "Seleccioná una convocatoria válida.")
+    if db.get(Carrera, data.carrera_id) is None:
+        raise HTTPException(422, "Seleccioná una carrera válida.")
     payload = data.model_dump()
     payload["email"] = claims.get("sub", str(data.email))
     return service.crear_borrador(db, payload["email"], payload)
