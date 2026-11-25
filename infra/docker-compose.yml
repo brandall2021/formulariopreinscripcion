@@ -41,7 +41,7 @@ services:
   api:
     build: ../backend
     command: >-
-      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips=*"
     env_file: .env
     environment:
       DATABASE_URL: postgresql+psycopg://face:face@postgres:5432/face

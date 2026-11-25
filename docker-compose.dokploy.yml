@@ -4,7 +4,7 @@ services:
     build:
       context: ./backend
     restart: unless-stopped
-    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips=*"
     environment:
       DATABASE_URL: postgresql+psycopg://${FACE_DB_USER}:${FACE_DB_PASSWORD}@sistemas-postgresql-gmfeht:5432/${FACE_DB_NAME}
       SECRET_KEY: ${SECRET_KEY}
