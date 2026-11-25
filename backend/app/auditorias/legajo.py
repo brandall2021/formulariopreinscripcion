@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 from tempfile import SpooledTemporaryFile
 from zipfile import ZipFile
 
@@ -16,6 +17,13 @@ from app.solicitudes.models import Solicitud
 
 logger = logging.getLogger(__name__)
 EXTENSIONES = {"application/pdf": "pdf", "image/jpeg": "jpg", "image/png": "png"}
+
+
+def nombre_archivo(dni: str, codigo: str, extension: str, version: int, actual: int) -> str:
+    dni = re.sub(r"[^0-9]", "", dni) or "sin-dni"
+    codigo = re.sub(r"[^a-z0-9]+", "-", codigo.lower()).strip("-") or "documento"
+    sufijo = "" if version == actual else f"-v{version}"
+    return f"{dni}-{codigo}{sufijo}.{extension}"
 
 
 def datos_fila(fila, excluir=()):
@@ -51,7 +59,8 @@ def crear_legajo(db, store, alumno: Alumno):
                     for version in db.query(DocumentoVersion).filter_by(documento_id=doc.id).order_by(DocumentoVersion.numero):
                         detalle = datos_fila(version, excluir=("object_key",))
                         extension = EXTENSIONES.get(version.mime, "bin")
-                        ruta = f"solicitud-{sol.id}/documento-{doc.id}/v{version.numero}.{extension}"
+                        nombre = nombre_archivo(sol.dni, tipo.codigo, extension, version.numero, doc.version)
+                        ruta = f"solicitud-{sol.id}/documento-{doc.id}/{nombre}"
                         try:
                             contenido = store.get_bytes(version.object_key)
                         except S3Error as exc:
