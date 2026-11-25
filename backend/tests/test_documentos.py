@@ -1,10 +1,14 @@
 import hashlib
+from urllib.parse import urlparse
+
 import pytest
 from sqlalchemy.orm import Session
 from app.alumnos.models import Alumno
 from app.catalogos.models import Carrera, Convocatoria, TipoDocumento
 from app.documentos.models import Documento, DocumentoVersion
 from app.documentos.service import registrar_documento, validar_version
+from app.infra.config import Settings
+from app.infra.storage import ObjectStore
 from app.solicitudes.models import Solicitud
 
 class FakeStore:
@@ -72,3 +76,31 @@ def test_checksum_invalido(contexto, db: Session):
     store.put_bytes(version.object_key, b"abcd")
     with pytest.raises(ValueError, match="checksum"):
         validar_version(db, version.id, store)
+
+
+def test_urls_prefirmadas_usan_endpoint_publico(monkeypatch):
+    endpoints = []
+
+    class FakeMinio:
+        def __init__(self, endpoint, **kwargs):
+            endpoints.append(endpoint)
+            self.endpoint = endpoint
+
+        def bucket_exists(self, bucket):
+            return True
+
+        def presigned_put_object(self, bucket, key, expires):
+            return f"http://{self.endpoint}/{bucket}/{key}"
+
+        def presigned_get_object(self, bucket, key, expires):
+            return f"http://{self.endpoint}/{bucket}/{key}"
+
+    monkeypatch.setattr("app.infra.storage.Minio", FakeMinio)
+    settings = Settings(minio_endpoint="minio:9000",
+                        minio_public_endpoint="localhost:9000")
+    store = ObjectStore(settings)
+
+    assert "minio:9000" in endpoints
+    assert "localhost:9000" in endpoints
+    assert urlparse(store.presigned_put("clave", "application/pdf", 900)).netloc == "localhost:9000"
+    assert urlparse(store.presigned_get("clave", 900)).netloc == "localhost:9000"

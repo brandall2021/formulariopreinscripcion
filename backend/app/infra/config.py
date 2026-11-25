@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://face:face@localhost:5432/face"
     test_database_url: str = "postgresql+psycopg://face:face@localhost:5433/face_test"
     minio_endpoint: str = "localhost:9000"
+    minio_public_endpoint: str = "localhost:9000"
     minio_access_key: str = "minioadmin"
     minio_secret_key: str = "minioadmin"
     minio_bucket: str = "face-documentos"

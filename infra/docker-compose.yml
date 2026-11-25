@@ -46,6 +46,7 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://face:face@postgres:5432/face
       MINIO_ENDPOINT: minio:9000
+      MINIO_PUBLIC_ENDPOINT: localhost:9000
       REDIS_URL: redis://redis:6379/0
       SMTP_HOST: mailpit
     ports: ["8000:8000"]
@@ -60,11 +61,12 @@ services:
         condition: service_started
   worker:
     build: ../backend
-    command: celery -A app.infra.celery_app:celery_app worker --loglevel=info
+    command: celery -A app.infra.celery_app:celery_app worker --loglevel=info -I worker.tasks
     env_file: .env
     environment:
       DATABASE_URL: postgresql+psycopg://face:face@postgres:5432/face
       MINIO_ENDPOINT: minio:9000
+      MINIO_PUBLIC_ENDPOINT: localhost:9000
       REDIS_URL: redis://redis:6379/0
       SMTP_HOST: mailpit
     depends_on:
