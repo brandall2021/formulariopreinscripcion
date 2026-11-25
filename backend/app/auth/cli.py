@@ -84,7 +84,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="app.auth.cli")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    sub.add_parser("listar", help="lista usuarios")
+    listar = sub.add_parser("listar", help="lista usuarios")
+    listar.set_defaults(func=cmd_listar)
 
     crear = sub.add_parser("crear", help="crea un usuario admin/auditor")
     crear.add_argument("--email", required=True)
