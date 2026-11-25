@@ -11,10 +11,13 @@ interface Fila {
 
 interface Doc {
   documento_id: number;
+  version: number;
   estado: string;
   object_key: string | null;
   observaciones: string[];
 }
+
+type DecisionLocal = { resultado: 'APROBADO' | 'OBSERVADO'; motivo?: string };
 
 @Component({
   selector: 'app-panel',
@@ -29,13 +32,16 @@ interface Doc {
           <ul>
             @for (doc of documentos[fila.id]; track doc.documento_id) {
               <li>
-                Documento {{ doc.documento_id }} ({{ doc.estado }})
+                Documento {{ doc.documento_id }} v{{ doc.version }} ({{ doc.estado }})
                 @for (motivo of doc.observaciones; track motivo) { <em>{{ motivo }}</em> }
-                <button (click)="decidir(fila, doc.documento_id, 'APROBADO')">Aprobar</button>
-                <button (click)="observar(fila, doc.documento_id)">Observar</button>
+                <button (click)="aprobar(fila, doc)">Aprobar</button>
+                <button (click)="observar(fila, doc)">Observar</button>
               </li>
             }
           </ul>
+          <button [disabled]="!puedeRegistrar(fila)" (click)="registrar(fila)">
+            Registrar auditoría
+          </button>
         }
       </article>
     } @empty {
@@ -47,30 +53,59 @@ export class PanelComponent implements OnInit {
   private api = inject(ApiService);
   filas: Fila[] = [];
   documentos: Record<number, Doc[]> = {};
+  selecciones: Record<number, Record<number, DecisionLocal>> = {};
 
   ngOnInit() {
-    this.api.get<Fila[]>('/auditorias/solicitudes?estado=EN_AUDITORIA')
-      .subscribe(filas => this.filas = filas);
+    this.api.get<Fila[]>('/auditorias/solicitudes')
+      .subscribe(filas => this.filas = filas.filter(
+        f => f.estado === 'EN_AUDITORIA' || f.estado === 'EN_REAUDITORIA'));
   }
 
   cargarDocumentos(fila: Fila) {
     this.api.get<Doc[]>(`/auditorias/solicitudes/${fila.id}/documentos`)
-      .subscribe(docs => this.documentos[fila.id] = docs);
+      .subscribe(docs => {
+        this.documentos[fila.id] = docs;
+        this.selecciones[fila.id] = {};
+      });
   }
 
-  decidir(fila: Fila, documentoId: number,
-          resultado: 'APROBADO' | 'OBSERVADO', motivo?: string) {
+  aprobar(fila: Fila, doc: Doc) {
+    this.selecciones[fila.id] ??= {};
+    this.selecciones[fila.id][doc.documento_id] = { resultado: 'APROBADO' };
+  }
+
+  observar(fila: Fila, doc: Doc) {
+    const motivo = window.prompt('Motivo de la observación');
+    if (!motivo?.trim()) return;
+    this.selecciones[fila.id] ??= {};
+    this.selecciones[fila.id][doc.documento_id] = {
+      resultado: 'OBSERVADO', motivo: motivo.trim(),
+    };
+  }
+
+  puedeRegistrar(fila: Fila): boolean {
+    const docs = this.documentos[fila.id];
+    const selecciones = this.selecciones[fila.id];
+    return !!docs?.length && docs.every(doc => !!selecciones?.[doc.documento_id]);
+  }
+
+  registrar(fila: Fila) {
+    if (!this.puedeRegistrar(fila)) return;
+    const decisiones = this.documentos[fila.id].map(doc => {
+      const decision = this.selecciones[fila.id][doc.documento_id];
+      return decision.resultado === 'OBSERVADO'
+        ? { documento_id: doc.documento_id, version: doc.version,
+            resultado: decision.resultado, motivo: decision.motivo }
+        : { documento_id: doc.documento_id, version: doc.version,
+            resultado: decision.resultado };
+    });
     this.api.post(`/auditorias/solicitudes/${fila.id}`, {
       auditor_id: 1,
-      decisiones: [{ documento_id: documentoId, resultado, motivo }],
+      decisiones,
     }).subscribe(() => {
       delete this.documentos[fila.id];
+      delete this.selecciones[fila.id];
       this.filas = this.filas.filter(f => f.id !== fila.id);
     });
-  }
-
-  observar(fila: Fila, documentoId: number) {
-    const motivo = window.prompt('Motivo de la observación');
-    if (motivo?.trim()) this.decidir(fila, documentoId, 'OBSERVADO', motivo.trim());
   }
 }

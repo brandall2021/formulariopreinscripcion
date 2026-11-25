@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 from sqlalchemy.orm import Session
 from app.auditorias.models import Auditoria, Observacion
@@ -27,13 +28,26 @@ def registrar_auditoria(db: Session, solicitud_id: int, auditor_id: int,
         if doc.id in vistos:
             raise ValueError("documento duplicado en la auditoría")
         vistos.add(doc.id)
+        version = decision.get("version")
+        if version != doc.version:
+            raise ValueError(f"versión obsoleta para el documento {doc.id}")
+        if doc.version_vigente_id is None:
+            raise ValueError(f"documento {doc.id} sin versión vigente")
         resultado = decision.get("resultado")
         if resultado not in ("OBSERVADO", "APROBADO"):
             raise ValueError(f"resultado inválido: {resultado}")
         if resultado == "OBSERVADO" and not (decision.get("motivo") or "").strip():
             raise ValueError("motivo obligatorio al observar")
+    esperados = {doc.id for doc in db.query(Documento)
+                 .filter_by(solicitud_id=solicitud_id).all()}
+    if vistos != esperados:
+        raise ValueError("debe auditar todos los documentos de la solicitud")
     audit = Auditoria(solicitud_id=solicitud_id, auditor_id=auditor_id,
-                      resultado="APROBADO")
+                      resultado="APROBADO",
+                      notas=json.dumps([
+                          {"documento_id": d["documento_id"], "version": d["version"]}
+                          for d in decisiones
+                      ]))
     db.add(audit)
     db.flush()
     observados = []

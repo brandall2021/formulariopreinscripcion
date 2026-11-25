@@ -14,6 +14,7 @@ router = APIRouter(prefix="/auditorias", tags=["auditorias"])
 
 class Decision(BaseModel):
     documento_id: int
+    version: int
     resultado: str
     motivo: str | None = None
 
@@ -37,7 +38,8 @@ def documentos(solicitud_id: int, db: Session = Depends(get_db)):
              .outerjoin(DocumentoVersion,
                         Documento.version_vigente_id == DocumentoVersion.id)
              .filter(Documento.solicitud_id == solicitud_id).all())
-    return [{"documento_id": doc.id, "estado": doc.estado,
+    return [{"documento_id": doc.id, "version": doc.version,
+             "estado": doc.estado,
              "object_key": version.object_key if version else None,
              "observaciones": [o.motivo for o in db.query(Observacion).filter_by(
                  documento_id=doc.id, resuelta_en=None).all()]}

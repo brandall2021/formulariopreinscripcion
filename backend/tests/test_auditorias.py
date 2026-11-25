@@ -1,3 +1,4 @@
+import json
 import pytest
 from sqlalchemy.orm import Session
 from app.alumnos.models import Alumno
@@ -24,7 +25,8 @@ def solicitud_en_auditoria(db: Session):
                     tipo_ingresante="nuevo", dni=alumno.dni, estado="EN_AUDITORIA")
     db.add(sol)
     db.flush()
-    doc = Documento(solicitud_id=sol.id, tipo_documento_id=td.id, estado="EN_REVISION")
+    doc = Documento(solicitud_id=sol.id, tipo_documento_id=td.id, estado="EN_REVISION",
+                    version=1, version_vigente_id=1)
     db.add(doc)
     db.commit()
     return sol, doc, auditor.id
@@ -34,7 +36,7 @@ def test_observacion_cambia_estado(solicitud_en_auditoria, db: Session):
     sol, doc, auditor_id = solicitud_en_auditoria
     eventos = []
     registrar_auditoria(db, sol.id, auditor_id,
-                        [{"documento_id": doc.id, "resultado": "OBSERVADO",
+                        [{"documento_id": doc.id, "version": doc.version, "resultado": "OBSERVADO",
                           "motivo": "El reverso del DNI es ilegible."}],
                         on_event=lambda evento, datos: eventos.append(evento))
     assert sol.estado == "PENDIENTE_ALUMNO"
@@ -46,7 +48,7 @@ def test_aprobacion_total(solicitud_en_auditoria, db: Session):
     sol, doc, auditor_id = solicitud_en_auditoria
     eventos = []
     registrar_auditoria(db, sol.id, auditor_id,
-                        [{"documento_id": doc.id, "resultado": "APROBADO"}],
+                        [{"documento_id": doc.id, "version": doc.version, "resultado": "APROBADO"}],
                         on_event=lambda evento, datos: eventos.append(evento))
     assert sol.estado == "DOCUMENTACION_APROBADA"
     assert db.get(Documento, doc.id).estado == "APROBADO"
@@ -58,11 +60,11 @@ def test_motivo_none_y_documento_inexistente_no_mutantan(solicitud_en_auditoria,
     sol, doc, auditor_id = solicitud_en_auditoria
     with pytest.raises(ValueError, match="motivo obligatorio"):
         registrar_auditoria(db, sol.id, auditor_id,
-                            [{"documento_id": doc.id, "resultado": "OBSERVADO",
+                            [{"documento_id": doc.id, "version": doc.version, "resultado": "OBSERVADO",
                               "motivo": None}])
     with pytest.raises(ValueError, match="no pertenece"):
         registrar_auditoria(db, sol.id, auditor_id,
-                            [{"documento_id": 999999, "resultado": "APROBADO"}])
+                            [{"documento_id": 999999, "version": 1, "resultado": "APROBADO"}])
     assert db.query(Auditoria).count() == 0
     assert db.query(Observacion).count() == 0
     assert db.get(Documento, doc.id).estado == "EN_REVISION"
@@ -72,7 +74,48 @@ def test_rechaza_documento_duplicado(solicitud_en_auditoria, db: Session):
     sol, doc, auditor_id = solicitud_en_auditoria
     with pytest.raises(ValueError, match="duplicado"):
         registrar_auditoria(db, sol.id, auditor_id, [
-            {"documento_id": doc.id, "resultado": "OBSERVADO", "motivo": "a"},
-            {"documento_id": doc.id, "resultado": "APROBADO"},
+            {"documento_id": doc.id, "version": doc.version, "resultado": "OBSERVADO", "motivo": "a"},
+            {"documento_id": doc.id, "version": doc.version, "resultado": "APROBADO"},
         ])
     assert db.query(Observacion).count() == 0
+
+
+def test_aprobacion_parcial_se_rechaza(solicitud_en_auditoria, db: Session):
+    sol, doc, auditor_id = solicitud_en_auditoria
+    td = TipoDocumento(codigo="recibo", nombre="Recibo de sueldo")
+    db.add(td)
+    db.flush()
+    otro = Documento(solicitud_id=sol.id, tipo_documento_id=td.id,
+                     estado="EN_REVISION", version=1, version_vigente_id=1)
+    db.add(otro)
+    db.commit()
+    with pytest.raises(ValueError, match="todos los documentos"):
+        registrar_auditoria(db, sol.id, auditor_id, [
+            {"documento_id": doc.id, "version": doc.version, "resultado": "APROBADO"},
+        ])
+    assert db.query(Auditoria).count() == 0
+    assert db.query(Observacion).count() == 0
+    assert sol.estado == "EN_AUDITORIA"
+    assert db.get(Documento, doc.id).estado == "EN_REVISION"
+    assert db.get(Documento, otro.id).estado == "EN_REVISION"
+
+
+def test_version_obsoleta_se_rechaza(solicitud_en_auditoria, db: Session):
+    sol, doc, auditor_id = solicitud_en_auditoria
+    with pytest.raises(ValueError, match="versión obsoleta"):
+        registrar_auditoria(db, sol.id, auditor_id, [
+            {"documento_id": doc.id, "version": doc.version + 1,
+             "resultado": "APROBADO"},
+        ])
+    assert db.query(Auditoria).count() == 0
+    assert db.query(Observacion).count() == 0
+    assert sol.estado == "EN_AUDITORIA"
+    assert db.get(Documento, doc.id).estado == "EN_REVISION"
+
+
+def test_version_evaluada_queda_registrada(solicitud_en_auditoria, db: Session):
+    sol, doc, auditor_id = solicitud_en_auditoria
+    audit = registrar_auditoria(db, sol.id, auditor_id, [
+        {"documento_id": doc.id, "version": doc.version, "resultado": "APROBADO"},
+    ])
+    assert {"documento_id": doc.id, "version": 1} in json.loads(audit.notas)
