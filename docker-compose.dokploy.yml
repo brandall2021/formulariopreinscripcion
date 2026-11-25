@@ -23,6 +23,8 @@ services:
       SMTP_TLS: ${SMTP_TLS:-true}
       SMTP_SSL: ${SMTP_SSL:-false}
       CORS_ORIGINS: https://${FACE_DOMAIN}
+      SEED_DEMO: ${SEED_DEMO:-true}
+      EXPOSE_DOCS: ${EXPOSE_DOCS:-false}
     expose:
       - "8000"
     networks:
@@ -52,6 +54,8 @@ services:
       SMTP_FROM: ${SMTP_FROM:-preinscripcion@face.unt.edu.ar}
       SMTP_TLS: ${SMTP_TLS:-true}
       SMTP_SSL: ${SMTP_SSL:-false}
+      SEED_DEMO: ${SEED_DEMO:-true}
+      EXPOSE_DOCS: ${EXPOSE_DOCS:-false}
     networks:
       - default
       - dokploy-network

@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     otp_max_intentos: int = 5
     upload_url_ttl: int = 900
     download_url_ttl: int = 300
+    seed_demo: bool = True
+    expose_docs: bool = False
 
 
 @lru_cache
