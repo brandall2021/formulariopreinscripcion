@@ -1,11 +1,19 @@
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
+import jwt
 from app.alumnos.models import Alumno
 from app.catalogos.models import Carrera, Convocatoria
+from app.infra.config import get_settings
 from app.infra.db import get_db
 from app.reportes.router import admin_router, router
 from app.solicitudes.models import Solicitud
+
+
+def _admin_headers():
+    token = jwt.encode({"sub": "admin@face.unt.edu.ar", "rol": "admin"},
+                       get_settings().secret_key, algorithm="HS256")
+    return {"Authorization": f"Bearer {token}"}
 
 def test_resumen(db: Session):
     conv = Convocatoria(nombre="2026-rep", anio=2026, activa=True)
@@ -23,7 +31,7 @@ def test_resumen(db: Session):
     app.include_router(admin_router)
     app.dependency_overrides[get_db] = lambda: db
     client = TestClient(app)
-    data = client.get("/reportes/resumen").json()
+    data = client.get("/reportes/resumen", headers=_admin_headers()).json()
     assert data["por_estado"]["EN_AUDITORIA"] == 1
     assert data["total"] >= 1
 
@@ -47,7 +55,7 @@ def test_cierre_administrativo(db: Session):
     app.dependency_overrides[get_db] = lambda: db
     client = TestClient(app)
     respuesta = client.post(f"/admin/solicitudes/{sol.id}/finalizar",
-                            json={"actor": "admin"})
+                            json={"actor": "admin"}, headers=_admin_headers())
     assert respuesta.status_code == 200
     assert respuesta.json()["estado"] == "FINALIZADA"
 
@@ -69,11 +77,11 @@ def test_rechazo_valida_motivo_y_estado_terminal(db: Session):
     app.dependency_overrides[get_db] = lambda: db
     client = TestClient(app)
     url = f"/admin/solicitudes/{sol.id}/rechazar"
-    assert client.post(url, json={"actor": "admin"}).status_code == 422
+    assert client.post(url, json={"actor": "admin"}, headers=_admin_headers()).status_code == 422
     respuesta = client.post(url, json={"actor": "admin",
-                                       "motivo": "Documentación incompleta"})
+                                       "motivo": "Documentación incompleta"}, headers=_admin_headers())
     assert respuesta.status_code == 200
     assert respuesta.json()["estado"] == "RECHAZADA"
     # Un segundo rechazo sobre el estado terminal debe ser 409, no 500.
-    segundo = client.post(url, json={"actor": "admin", "motivo": "reintento"})
+    segundo = client.post(url, json={"actor": "admin", "motivo": "reintento"}, headers=_admin_headers())
     assert segundo.status_code == 409

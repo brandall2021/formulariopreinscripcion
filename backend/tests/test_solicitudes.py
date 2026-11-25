@@ -2,6 +2,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
+import jwt
+from app.infra.config import get_settings
 from app.alumnos.models import Alumno
 from app.catalogos.models import Carrera, Convocatoria, RequisitoDocumental
 from app.catalogos.seed import seed_catalogos
@@ -12,6 +14,10 @@ from app.solicitudes.router import router as solicitudes_router
 from app.solicitudes.service import crear_borrador, confirmar
 
 
+
+def _alumno_headers(email="ana@example.com"):
+    token = jwt.encode({"sub": email, "exp": 9999999999}, get_settings().secret_key, algorithm="HS256")
+    return {"Authorization": f"Bearer {token}"}
 def _ids(db: Session) -> dict:
     conv = db.query(Convocatoria).filter_by(nombre="Convocatoria 2026").one()
     car = db.query(Carrera).filter_by(codigo="CP").one()
@@ -102,7 +108,7 @@ def test_endpoint_confirmar_409_y_404(db: Session):
     app.include_router(solicitudes_router)
     app.dependency_overrides[get_db] = lambda: db
     client = TestClient(app)
-    assert client.get("/solicitudes/999999").status_code == 404
+    assert client.get("/solicitudes/999999", headers=_alumno_headers("http@example.com")).status_code == 404
     respuesta = client.post(f"/solicitudes/{sol.id}/confirmar",
-                            json={"version": sol.version + 1})
+                            json={"version": sol.version + 1}, headers=_alumno_headers("http@example.com"))
     assert respuesta.status_code == 409

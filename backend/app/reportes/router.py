@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
+from app.auth.deps import require_roles
 from app.documentos.models import Documento
 from app.infra.db import get_db
 from app.notificaciones.models import Notificacion
@@ -9,7 +10,7 @@ from app.solicitudes.models import Solicitud
 from app.solicitudes.service import registrar_transicion
 from app.solicitudes.state import InvalidTransition
 
-router = APIRouter(prefix="/reportes", tags=["reportes"])
+router = APIRouter(prefix="/reportes", tags=["reportes"], dependencies=[Depends(require_roles("admin"))])
 
 @router.get("/resumen")
 def resumen(db: Session = Depends(get_db)):
@@ -29,7 +30,7 @@ def observaciones_por_documento(db: Session = Depends(get_db)):
              .group_by(Documento.tipo_documento_id).all())
     return [{"tipo_documento_id": tipo, "cantidad": n} for tipo, n in filas]
 
-admin_router = APIRouter(prefix="/admin", tags=["admin"])
+admin_router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_roles("admin"))])
 
 class CierreIn(BaseModel):
     actor: str

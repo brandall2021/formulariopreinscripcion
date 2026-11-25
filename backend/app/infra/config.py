@@ -14,6 +14,11 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     smtp_host: str = "localhost"
     smtp_port: int = 1025
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = "preinscripcion@face.unt.edu.ar"
+    smtp_tls: bool = False
+    smtp_ssl: bool = False
     secret_key: str = "dev-secret-change-me-please-use-32-bytes-minimum"
     otp_ttl_seconds: int = 600
     otp_max_intentos: int = 5

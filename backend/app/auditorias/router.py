@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from app.auditorias.models import Observacion
 from app.auditorias.service import registrar_auditoria
+from app.auth.deps import require_roles
 from app.auth.models import Usuario
 from app.documentos.models import Documento, DocumentoVersion
 from app.infra.db import get_db
@@ -10,7 +11,7 @@ from app.notificaciones.events import publicar_evento
 from app.solicitudes.models import Solicitud
 from worker.tasks import enviar_notificacion
 
-router = APIRouter(prefix="/auditorias", tags=["auditorias"])
+router = APIRouter(prefix="/auditorias", tags=["auditorias"], dependencies=[Depends(require_roles("auditor", "admin"))])
 
 class Decision(BaseModel):
     documento_id: int

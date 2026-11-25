@@ -2,6 +2,8 @@ import hashlib
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
+import jwt
+from app.infra.config import get_settings
 from app.alumnos.models import Alumno
 from app.auditorias.models import Auditoria, Observacion
 from app.auth.models import Usuario
@@ -58,7 +60,8 @@ def test_reemplazo_conserva_versiones(db: Session):
     app.include_router(solicitudes_router)
     app.dependency_overrides[get_db] = lambda: db
     client = TestClient(app)
-    observados = client.get(f"/solicitudes/{sol.id}/documentos-observados").json()
+    token = jwt.encode({"sub": "pedro-sub@example.com", "exp": 9999999999}, get_settings().secret_key, algorithm="HS256")
+    observados = client.get(f"/solicitudes/{sol.id}/documentos-observados", headers={"Authorization": f"Bearer {token}"}).json()
     assert observados[0]["motivo"] == "Imagen ilegible"
 
     llamados = []
@@ -68,7 +71,7 @@ def test_reemplazo_conserva_versiones(db: Session):
     tasks.enviar_notificacion.delay = lambda nid: llamados.append(("notificar", nid))
     try:
         respuesta = client.post(f"/solicitudes/{sol.id}/reenviar",
-                                json={"version": sol.version})
+                                json={"version": sol.version}, headers={"Authorization": f"Bearer {token}"})
         assert respuesta.status_code == 200
     finally:
         tasks.validar_documentos_solicitud.delay = original_validar
