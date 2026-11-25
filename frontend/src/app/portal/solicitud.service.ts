@@ -62,6 +62,14 @@ export class SolicitudService {
     return this.api.post<Solicitud>(`/solicitudes/${id}/reenviar`, { version });
   }
 
+  subirDocumento(solicitudId: number, tipoDocumentoId: number, archivo: File) {
+    const datos = new FormData();
+    datos.set('solicitud_id', String(solicitudId));
+    datos.set('tipo_documento_id', String(tipoDocumentoId));
+    datos.set('archivo', archivo);
+    return this.api.post<{ documento_id: number }>('/documentos/upload', datos);
+  }
+
   pedirUrlSubida(body: Record<string, unknown>) {
     return this.api.post<{ url: string; documento_id: number; expires_in: number }>(
       '/documentos/upload-url', body);

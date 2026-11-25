@@ -1,7 +1,6 @@
 import { Component, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { Requisito, SolicitudService } from '../solicitud.service';
-import { sha256 } from './checksum';
 import { validateDocument } from './document-validation';
 
 type RequisitoVista = Requisito & { nombre: string; descripcion?: string };
@@ -81,7 +80,7 @@ export class DocumentosComponent {
     return this.requisitos.filter(req => this.estados[req.tipo_documento_id] === 'Cargado').length;
   }
 
-  async subir(tipoDocumentoId: number, event: Event) {
+  subir(tipoDocumentoId: number, event: Event) {
     const archivo = (event.target as HTMLInputElement).files?.[0];
     if (!archivo) return;
     this.errores[tipoDocumentoId] = '';
@@ -91,35 +90,19 @@ export class DocumentosComponent {
       return;
     }
     this.estados[tipoDocumentoId] = 'Subiendo…';
-    let checksum: string;
-    try {
-      checksum = await sha256(archivo);
-    } catch {
-      this.estados[tipoDocumentoId] = 'Error';
-      this.errores[tipoDocumentoId] = 'No se pudo verificar el archivo. Intentá nuevamente.';
-      return;
-    }
-    this.service.pedirUrlSubida({
-      solicitud_id: this.solicitudId, tipo_documento_id: tipoDocumentoId,
-      filename: archivo.name, content_type: archivo.type,
-      size: archivo.size, checksum,
-    }).subscribe({
-      next: ({ url }) => {
-        fetch(url, { method: 'PUT', body: archivo,
-          headers: { 'Content-Type': archivo.type } })
-          .then(response => {
-            if (!response.ok) throw new Error('upload');
-            this.estados[tipoDocumentoId] = 'Cargado';
-            this.mensaje = 'Documento cargado correctamente.';
-          })
-          .catch(() => {
-            this.estados[tipoDocumentoId] = 'Error';
-            this.errores[tipoDocumentoId] = 'No se pudo subir el archivo. Intentá nuevamente.';
-          });
+    this.service.subirDocumento(this.solicitudId, tipoDocumentoId, archivo).subscribe({
+      next: () => {
+        this.estados[tipoDocumentoId] = 'Cargado';
+        this.mensaje = 'Documento cargado correctamente.';
       },
-      error: () => {
+      error: ({ status, error }) => {
         this.estados[tipoDocumentoId] = 'Error';
-        this.errores[tipoDocumentoId] = 'No se pudo preparar la carga. Intentá nuevamente.';
+        this.errores[tipoDocumentoId] = status === 413
+          ? 'El archivo supera el tamaño permitido.'
+          : typeof error?.detail === 'string'
+            ? error.detail
+            : 'No se pudo subir el archivo. Intentá nuevamente.';
+        (event.target as HTMLInputElement).value = '';
       },
     });
   }

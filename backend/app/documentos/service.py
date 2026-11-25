@@ -10,8 +10,10 @@ EXTENSIONES = {"application/pdf": "pdf", "image/jpeg": "jpg", "image/png": "png"
 
 def registrar_documento(db: Session, solicitud_id: int, tipo_documento_id: int,
                         filename: str, content_type: str, size: int, checksum: str,
-                        creado_por: str, store) -> Documento:
+                        creado_por: str, store, *, contenido: bytes | None = None) -> Documento:
     td = db.get(TipoDocumento, tipo_documento_id)
+    if td is None:
+        raise ValueError('tipo de documento inválido')
     if content_type not in EXTENSIONES:
         raise ValueError("formato no permitido")
     if size > td.tamano_maximo_bytes:
@@ -29,6 +31,8 @@ def registrar_documento(db: Session, solicitud_id: int, tipo_documento_id: int,
         doc.estado = "REEMPLAZADO"
     numero = doc.version + 1
     key = f"solicitudes/{solicitud_id}/{td.codigo}/v{numero}.{EXTENSIONES[content_type]}"
+    if contenido is not None:
+        store.put_bytes(key, contenido)
     db.add(DocumentoVersion(documento_id=doc.id, numero=numero, object_key=key,
                             mime=content_type, bytes=size, checksum=checksum,
                             creado_por=creado_por))

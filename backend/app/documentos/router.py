@@ -1,6 +1,8 @@
+import hashlib
 import logging
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 from app.alumnos.models import Alumno
 from app.auth.deps import get_current_claims, require_roles
@@ -32,6 +34,36 @@ def _assert_solicitud_access(sol: Solicitud, claims: dict, db: Session) -> None:
     alumno = db.get(Alumno, sol.alumno_id)
     if alumno is None or alumno.email != claims.get("sub"):
         raise HTTPException(403, "acceso denegado")
+
+
+@router.post("/upload")
+def upload(solicitud_id: int = Form(), tipo_documento_id: int = Form(),
+           archivo: UploadFile = File(), db: Session = Depends(get_db),
+           store: ObjectStore = Depends(get_store),
+           claims: dict = Depends(require_roles("alumno"))):
+    sol = db.execute(select(Solicitud).where(
+        Solicitud.id == solicitud_id).with_for_update()).scalar_one_or_none()
+    if sol is None:
+        raise HTTPException(404, "Solicitud no encontrada.")
+    _assert_solicitud_access(sol, claims, db)
+    if sol.estado not in ("BORRADOR", "PENDIENTE_ALUMNO"):
+        raise HTTPException(409, "La solicitud ya no admite cargas de documentos.")
+
+    limite = 10 * 1024 * 1024
+    contenido = archivo.file.read(limite + 1)
+    if not contenido:
+        raise HTTPException(422, "El archivo está vacío.")
+    if len(contenido) > limite:
+        raise HTTPException(413, "El archivo supera los 10 MB.")
+    try:
+        doc = registrar_documento(
+            db, solicitud_id, tipo_documento_id, archivo.filename or "",
+            archivo.content_type or "", len(contenido),
+            hashlib.sha256(contenido).hexdigest(), claims["sub"], store,
+            contenido=contenido)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return {"documento_id": doc.id}
 
 
 @router.post("/upload-url")
