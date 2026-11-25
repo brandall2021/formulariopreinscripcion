@@ -154,7 +154,7 @@ def reenviar(solicitud_id: int, payload: ReenviarIn, db: Session = Depends(get_d
                           Documento.estado != "REEMPLAZADO",
                           Observacion.resuelta_en.is_(None)).first())
     if pendientes is not None:
-        raise HTTPException(409, "Reemplazá todos los documentos observados antes de reenviar.")
+        raise HTTPException(409, "Subí una nueva versión de cada documento observado antes de reenviar.")
     registrar_transicion(db, sol, "REENVIADA", claims.get("sub", "alumno"), commit=False)
     db.add(Notificacion(
         solicitud_id=solicitud_id, evento="REENVIADA", canal="email",

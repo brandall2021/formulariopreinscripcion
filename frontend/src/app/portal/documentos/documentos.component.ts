@@ -34,7 +34,7 @@ type RequisitoVista = { tipo_documento_id: number; nombre: string };
           @for (motivo of motivos[req.tipo_documento_id] ?? []; track $index) {
             <p class="error">{{ motivo }}</p>
           }
-          <label [for]="'doc-' + req.tipo_documento_id">Seleccionar archivo
+          <label [for]="'doc-' + req.tipo_documento_id">{{ corrigiendo ? 'Subir nueva versión' : 'Seleccionar archivo' }}
             <input [id]="'doc-' + req.tipo_documento_id" type="file" accept=".pdf,.jpg,.jpeg,.png"
                    [disabled]="confirmando || confirmado || estados[req.tipo_documento_id] === 'Subiendo…'"
                    (change)="subir(req.tipo_documento_id, $event)">
@@ -48,14 +48,14 @@ type RequisitoVista = { tipo_documento_id: number; nombre: string };
       }
       <section class="confirmacion" aria-labelledby="confirmacion-titulo">
         <h2 id="confirmacion-titulo">{{ corrigiendo ? 'Reenviar documentación' : 'Confirmar preinscripción' }}</h2>
-        <p class="muted">{{ corrigiendo ? 'Reemplazá los documentos observados y reenviá la solicitud.' : 'Cuando confirmes, la solicitud pasará a validación documental.' }}</p>
+        <p class="muted">{{ corrigiendo ? 'Subí una nueva versión de cada documento observado y reenviá la solicitud. Las versiones anteriores se conservan en el historial.' : 'Cuando confirmes, la solicitud pasará a validación documental.' }}</p>
         <p id="confirmacion-progreso" role="status">
           @if (cargandoRequisitos) {
             Cargando los requisitos para confirmar…
           } @else if (requisitos.length) {
-            {{ documentosCargados }} de {{ requisitos.length }} documentos {{ corrigiendo ? 'observados reemplazados' : 'obligatorios cargados' }}.
+            {{ documentosCargados }} de {{ requisitos.length }} documentos {{ corrigiendo ? 'observados con nueva versión' : 'obligatorios cargados' }}.
             @if (documentosCargados < requisitos.length) {
-              Cargá los archivos pendientes para habilitar el botón.
+              {{ corrigiendo ? 'Subí las nuevas versiones pendientes para habilitar el botón.' : 'Cargá los archivos pendientes para habilitar el botón.' }}
             }
           } @else {
             No hay requisitos disponibles para esta solicitud.
@@ -147,7 +147,7 @@ export class DocumentosComponent {
     this.service.subirDocumento(this.solicitudId, tipoDocumentoId, archivo).subscribe({
       next: () => {
         this.estados[tipoDocumentoId] = 'Cargado';
-        this.mensaje = 'Documento cargado correctamente.';
+        this.mensaje = this.corrigiendo ? 'Nueva versión cargada correctamente.' : 'Documento cargado correctamente.';
       },
       error: ({ status, error }) => {
         this.estados[tipoDocumentoId] = 'Error';
