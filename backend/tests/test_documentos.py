@@ -1,4 +1,5 @@
 import hashlib
+from contextlib import contextmanager
 from urllib.parse import urlparse
 
 import pytest
@@ -6,7 +7,11 @@ from sqlalchemy.orm import Session
 from app.alumnos.models import Alumno
 from app.catalogos.models import Carrera, Convocatoria, TipoDocumento
 from app.documentos.models import Documento, DocumentoVersion
-from app.documentos.service import registrar_documento, validar_version
+from app.documentos.service import (
+    registrar_documento,
+    validar_documentos_solicitud,
+    validar_version,
+)
 from app.infra.config import Settings
 from app.infra.storage import ObjectStore
 from app.solicitudes.models import Solicitud
@@ -104,3 +109,25 @@ def test_urls_prefirmadas_usan_endpoint_publico(monkeypatch):
     assert "localhost:9000" in endpoints
     assert urlparse(store.presigned_put("clave", "application/pdf", 900)).netloc == "localhost:9000"
     assert urlparse(store.presigned_get("clave", 900)).netloc == "localhost:9000"
+
+
+def test_worker_transiciona_reenviada_a_en_reauditoria(contexto, db: Session, monkeypatch):
+    sol, td, store = contexto
+    sol.estado = "REENVIADA"
+    db.commit()
+    data = b"dni reenviado"
+    checksum = hashlib.sha256(data).hexdigest()
+    doc = registrar_documento(db, sol.id, td.id, "dni.pdf", "application/pdf",
+                              len(data), checksum, "ana-doc@example.com", store)
+    version = db.query(DocumentoVersion).filter_by(documento_id=doc.id).one()
+    store.put_bytes(version.object_key, data)
+
+    @contextmanager
+    def misma_sesion():
+        yield db
+
+    monkeypatch.setattr("app.documentos.service.SessionLocal", misma_sesion)
+    monkeypatch.setattr("app.infra.storage.ObjectStore", lambda settings: store)
+
+    validar_documentos_solicitud(sol.id)
+    assert db.get(Solicitud, sol.id).estado == "EN_REAUDITORIA"

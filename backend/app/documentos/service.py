@@ -65,3 +65,5 @@ def validar_documentos_solicitud(solicitud_id: int) -> None:
             validar_version(db, version.id, store)
         if sol.estado == "EN_VALIDACION":
             registrar_transicion(db, sol, "EN_AUDITORIA", "worker")
+        elif sol.estado == "REENVIADA":
+            registrar_transicion(db, sol, "EN_REAUDITORIA", "worker")
