@@ -20,7 +20,9 @@ class Decision(BaseModel):
     motivo: str | None = None
 
 class AuditoriaIn(BaseModel):
-    auditor_id: int
+    # Se acepta por compatibilidad, pero se ignora: la identidad del auditor
+    # se toma siempre del token autenticado.
+    auditor_id: int | None = None
     decisiones: list[Decision]
 
 @router.get("/solicitudes")
@@ -47,13 +49,14 @@ def documentos(solicitud_id: int, db: Session = Depends(get_db)):
             for doc, version in filas]
 
 @router.post("/solicitudes/{solicitud_id}")
-def auditar(solicitud_id: int, data: AuditoriaIn, db: Session = Depends(get_db)):
-    auditor = db.get(Usuario, data.auditor_id)
-    if auditor is None or not auditor.activo or auditor.rol not in ("auditor", "admin"):
+def auditar(solicitud_id: int, data: AuditoriaIn, db: Session = Depends(get_db),
+            claims: dict = Depends(require_roles("auditor", "admin"))):
+    auditor = db.query(Usuario).filter_by(email=claims.get("sub"), activo=True).first()
+    if auditor is None or auditor.rol not in ("auditor", "admin"):
         raise HTTPException(403, "auditor no autorizado")
     try:
         return registrar_auditoria(
-            db, solicitud_id, data.auditor_id,
+            db, solicitud_id, auditor.id,
             [d.model_dump() for d in data.decisiones],
             on_event=lambda evento, datos: publicar_evento(
                 db, solicitud_id, evento, datos,

@@ -123,6 +123,8 @@ Base: `infra/.env.example`.
 | `UPLOAD_URL_TTL` | Presigned PUT | `900` |
 | `DOWNLOAD_URL_TTL` | Presigned GET | `300` |
 | `CORS_ORIGINS` | Orígenes permitidos API | `https://dominio-frontend` |
+| `SEED_DEMO` | Carga catálogos/usuarios demo al iniciar | `true` en demo, `false` en producción |
+| `EXPOSE_DOCS` | Publica `/docs` y `/openapi.json` | `false` en producción |
 
 ## Despliegue en Dokploy
 
@@ -149,13 +151,14 @@ El despliegue actual usa `docker-compose.dokploy.yml` como compose de la app en 
 
 > En Dokploy se activó HTTPS/Let’s Encrypt para frontend y API. La emisión efectiva depende de que el dominio público resuelva correctamente y Let’s Encrypt pueda validar el challenge. Para `sslip.io` puede requerir ajuste DNS/certificado según el entorno.
 
-### SMTP / Gmail
+### SMTP / correo real
 
-Mailpit era solo para desarrollo local. Para correo real:
+Mailpit era solo para desarrollo local. Para correo real el backend soporta SMTP con login, STARTTLS o SSL implícito:
 
-1. Crear una **App Password** de Gmail (cuenta con 2FA).
+1. Obtener credenciales SMTP del proveedor (Gmail requiere **App Password** con 2FA).
 2. Cargar en el entorno del compose de Dokploy:
    ```env
+   # Puerto 587 (STARTTLS)
    SMTP_HOST=smtp.gmail.com
    SMTP_PORT=587
    SMTP_USER=cuenta@gmail.com
@@ -164,9 +167,35 @@ Mailpit era solo para desarrollo local. Para correo real:
    SMTP_TLS=true
    SMTP_SSL=false
    ```
-3. Redeployar el compose.
+   Para **puerto 465** usar SSL implícito: `SMTP_SSL=true` y `SMTP_TLS=false`.
+3. Redeployar el compose y probar `POST /auth/request-otp`.
 
-No commitear credenciales SMTP. El archivo `/tmp/opencode/smtp.env` puede usarse localmente en el servidor con `chmod 600`, pero no debe versionarse.
+> Verificado en el deploy actual: el proveedor configurado usa puerto 465 con `SMTP_SSL=true`; el OTP respondió `202` y la notificación de aprobación quedó `ENVIADA`.
+
+No commitear credenciales SMTP. Cargarlas solo en el Environment de Dokploy o en un archivo local con `chmod 600` fuera del repo.
+
+### Gestión de usuarios admin/auditor
+
+La imagen de la API incluye una CLI para crear/rotar usuarios sin tocar seeds:
+
+```bash
+# Listar
+docker exec face-preinscripciones-6bf2d3-fhxt9q-api-1 python -m app.auth.cli listar
+
+# Crear (lee la contraseña de stdin, mínimo 10 caracteres)
+docker exec -i face-preinscripciones-6bf2d3-fhxt9q-api-1 \
+  python -m app.auth.cli crear --email auditora@face.unt.edu.ar --rol auditor --password-stdin
+
+# Cambiar contraseña / reactivar
+docker exec -i face-preinscripciones-6bf2d3-fhxt9q-api-1 \
+  python -m app.auth.cli password --email auditora@face.unt.edu.ar --password-stdin
+
+# Desactivar un usuario demo
+docker exec face-preinscripciones-6bf2d3-fhxt9q-api-1 \
+  python -m app.auth.cli desactivar --email auditor@face.unt.edu.ar
+```
+
+Para producción: crear las cuentas reales, verificar acceso y recién entonces desactivar las demo y/o poner `SEED_DEMO=false`.
 
 ## Verificación
 
@@ -184,50 +213,47 @@ cd frontend && npm run build
 docker compose -f infra/docker-compose.yml config --quiet
 ```
 
-Resultado de verificación reciente del circuito completo (antes de los cambios locales pendientes de commit): backend 43 passed, frontend 5 SUCCESS + build OK, compose config OK, E2E real con solicitud finalizada y notificaciones enviadas.
+Resultado de verificación reciente: backend **47 passed**, `npm run build` OK, compose config OK y E2E completo ejecutado contra el deploy de Dokploy (alta de solicitud, carga de documentos, validación, auditoría y notificación enviada).
 
 ## Lo que falta
 
-### Bloqueantes antes de producción
+### Estado verificado (2026-11-25)
 
-- [ ] **Confirmaciones de negocio FACE (spec §7)**: lista oficial de carreras, tipos de ingresante, requisitos por convocatoria, importes y fechas reales, política de conservación documental, número de WhatsApp habilitado.
-- [ ] **SMTP real/Gmail**: cargar credenciales App Password en Dokploy y validar envío real de OTP/notificaciones.
-- [ ] **Rotar secretos expuestos en chat**: token de GitHub y API key de Dokploy compartidos durante la sesión deben rotarse/revocarse.
-- [ ] **Credenciales demo**: cambiar/eliminar `auditor@face.unt.edu.ar` y `admin@face.unt.edu.ar` o deshabilitarlas fuera de demo.
-- [ ] **HTTPS efectivo en dominios públicos definitivos**: validar emisión Let’s Encrypt y redirección HTTP→HTTPS en los dominios finales de FACE.
-- [ ] **Autorización completa en frontend**: integrar login OTP/admin, almacenamiento de token, interceptor `Authorization: Bearer` y guards por rol. El backend ya tiene hardening parcial en trabajo local; sin frontend adaptado, endpoints protegidos romperían la UI actual.
-- [ ] **Autorización JWT/roles end-to-end**: revisar todos los endpoints sensibles, ownership por solicitud/documento y casos de auditor/admin/alumno; agregar pruebas de autorización.
-- [ ] **Revisión de exposición**: Mailpit no debe quedar público; endpoints administrativos/reportes solo para roles autorizados.
+- Backend: **47 passed** (`pytest -q`), incluyendo pruebas de autorización API.
+- Frontend: `npm run build` OK.
+- E2E sobre el deploy Dokploy: OTP alumno → borrador → 6 documentos a MinIO → confirmación (`FACE-2026-00001`) → validación worker → auditoría completa → `DOCUMENTACION_APROBADA` → notificación `ENVIADA`.
+- Auth: alumno por OTP; admin/auditor por JWT. El backend deriva la identidad del auditor desde el token y ya no confía en `auditor_id` enviado por el cliente.
+- SMTP real verificado: `POST /auth/request-otp` respondió `202` y la notificación de aprobación quedó `ENVIADA`.
+
+### Bloqueantes antes de producción (requieren acción humana/FACE)
+
+- [ ] **Confirmaciones de negocio FACE (spec §7)**: carreras, tipos de ingresante, requisitos por convocatoria, importes y fechas reales, política de conservación documental y número de WhatsApp habilitado.
+- [ ] **Rotar secretos expuestos en chat**: token de GitHub y API key de Dokploy deben revocarse/rotarse en sus consolas.
+- [ ] **Credenciales demo**: crear cuentas reales con la CLI, verificar acceso y luego desactivar `auditor@face.unt.edu.ar` / `admin@face.unt.edu.ar` (o `SEED_DEMO=false`).
+- [ ] **Dominios y HTTPS definitivos**: reemplazar `sslip.io` por dominios institucionales FACE, configurar DNS y validar Let’s Encrypt + redirección HTTP→HTTPS.
+- [ ] **Backups con restauración probada**: PostgreSQL y MinIO (ver `docs/OPERACION_PRODUCCION.md`).
+- [ ] **Monitoreo y alertas**: API, worker Celery, cola, SMTP, MinIO, PostgreSQL, disco y logs centralizados.
+- [ ] **Antivirus y retención**: escaneo de archivos y política de conservación/borrado (Ley 25.326 para datos sensibles/discapacidad).
 
 ### Operación y seguridad
 
-- [ ] **Backups**: programar backups de PostgreSQL y MinIO; probar restauración.
-- [ ] **Monitoreo y alertas**: logs centralizados, healthchecks, alertas por worker caído, cola atrasada, errores SMTP/MinIO/DB.
-- [ ] **Antivirus**: escaneo de archivos antes de aceptarlos/entregarlos en producción.
-- [ ] **Política de conservación**: definir retención/borrado documental; la entrega actual no borra automáticamente.
-- [ ] **Gestión de secretos**: mover secretos a gestor/variables seguras de Dokploy; no usar `.env` con secretos en git.
-- [ ] **Hardening de despliegue**: revisar headers, rate limiting, CORS final, TLS, tamaños máximos, timeouts, límites de carga.
-- [ ] **Datos sensibles**: revisar acceso a datos de discapacidad y cumplimiento Ley 25.326.
-- [ ] **Limpieza de config Dokploy**: eliminar token embebido en historial/logs de despliegue si quedó registrado; usar credencial Git de Dokploy/SSH.
+- [x] Headers de seguridad, HSTS en HTTPS y rate limit básico en endpoints de auth.
+- [x] Docs OpenAPI deshabilitables (`EXPOSE_DOCS=false`).
+- [x] Seed demo deshabilitable (`SEED_DEMO=false`).
+- [x] Autorización por rol/ownership en solicitudes, documentos, auditoría y reportes.
+- [x] CLI de usuarios admin/auditor.
+- [ ] Rate limiting distribuido en Traefik/WAF si se escala a más de una instancia (el actual es en memoria por proceso).
+- [ ] Gestión de secretos en gestor dedicado; revisar historial/logs de despliegue por tokens embebidos.
 
 ### Funcional/producto
 
-- [ ] **WhatsApp real**: reemplazar simulación por WhatsApp Business Cloud API, manteniendo el evento/idempotencia.
+- [ ] **WhatsApp real**: reemplazar simulación por WhatsApp Business Cloud API, manteniendo evento/idempotencia.
 - [ ] **Integración SIU Guaraní**: fuera del MVP actual; definir contrato y alcance.
 - [ ] **OCR/IA**: no implementado por decisión de alcance.
-- [ ] **Datos seed definitivos**: reemplazar carreras/tipos/requisitos de demo por los oficiales de FACE.
-- [ ] **UX de auth**: pantallas de ingreso OTP para alumno y login admin/auditor; manejo de expiración de token.
-- [ ] **Auditoría/observabilidad de negocio**: métricas y trazabilidad operativa para mesa de ayuda.
+- [ ] **Datos seed definitivos**: reemplazar carreras/tipos/requisitos demo por los oficiales de FACE.
+- [ ] **UX/E2E de navegador**: probar manualmente en el navegador sobre el dominio final (OTP alumno, auditor, admin, subsanación y expiración de token).
 
-### Cambios locales pendientes de commit/deploy
-
-Hay cambios en el worktree que aún no fueron commiteados ni desplegados en Dokploy:
-
-- Hardening parcial de auth JWT/roles en backend.
-- Soporte SMTP configurable para Gmail (`SMTP_USER/PASSWORD/FROM/TLS/SSL`).
-- `docker-compose.dokploy.yml` preparado para Gmail y sin Mailpit.
-
-Antes de desplegarlos, validar compatibilidad con el frontend actual o implementar primero la autenticación del frontend.
+Ver runbook operativo: `docs/OPERACION_PRODUCCION.md`.
 
 ## Seguridad
 

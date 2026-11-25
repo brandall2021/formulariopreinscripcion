@@ -71,7 +71,8 @@ def download_url(documento_id: int, db: Session = Depends(get_db),
 
 @router.post("/{version_id}/validar")
 def validar(version_id: int, db: Session = Depends(get_db),
-            store: ObjectStore = Depends(get_store)):
+            store: ObjectStore = Depends(get_store),
+            claims: dict = Depends(require_roles("auditor", "admin"))):
     try:
         version = validar_version(db, version_id, store)
     except ValueError as exc:

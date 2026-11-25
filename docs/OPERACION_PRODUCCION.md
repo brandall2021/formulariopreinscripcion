@@ -14,7 +14,14 @@ Este documento resume lo que falta para pasar de demo a producción y los pasos 
   - `SMTP_SSL=false`
   Luego redeploy y probar OTP/notificación.
 - **Rotar secretos expuestos**: revocar/rotar token GitHub y API key Dokploy que fueron compartidos en chat; revisar logs de deploy.
-- **Credenciales demo**: desactivar/cambiar usuarios seed `auditor@face.unt.edu.ar` y `admin@face.unt.edu.ar` o poner `SEED_DEMO=false` y crear usuarios productivos seguros.
+- **Credenciales demo**: desactivar/cambiar usuarios seed `auditor@face.unt.edu.ar` y `admin@face.unt.edu.ar` o poner `SEED_DEMO=false` y crear usuarios productivos seguros. Para crear/rotar usuarios usar la CLI incluida en la imagen de la API:
+  ```bash
+  docker exec -i face-preinscripciones-6bf2d3-fhxt9q-api-1 \
+    python -m app.auth.cli crear --email auditora@face.unt.edu.ar --rol auditor --password-stdin
+  docker exec face-preinscripciones-6bf2d3-fhxt9q-api-1 \
+    python -m app.auth.cli desactivar --email auditor@face.unt.edu.ar
+  ```
+  Crear y verificar las cuentas reales **antes** de desactivar las demo para no perder acceso.
 - **Dominios oficiales FACE**: reemplazar `sslip.io` por dominios institucionales, configurar DNS, habilitar Let’s Encrypt/Traefik y forzar HTTPS.
 - **Datos oficiales FACE §7**: carreras, tipos de ingresante, requisitos por convocatoria, importes/fechas reales, política de conservación, número WhatsApp habilitado.
 
@@ -22,7 +29,9 @@ Este documento resume lo que falta para pasar de demo a producción y los pasos 
 
 - CORS configurable por `CORS_ORIGINS`.
 - Headers de seguridad básicos: `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, HSTS en HTTPS.
-- Rate limit en memoria para `/auth/request-otp`, `/auth/verify-otp`, `/auth/admin/login`.
+- Rate limit en memoria para `/auth/request-otp`, `/auth/verify-otp`, `/auth/admin/login` (si se escala a más de una instancia, complementar en Traefik/WAF).
+- El backend deriva la identidad del auditor del token JWT; ignora `auditor_id` enviado por el cliente.
+- `/documentos/{version_id}/validar` exige rol auditor/admin.
 - Docs OpenAPI deshabilitables con `EXPOSE_DOCS=false`.
 - Seed demo deshabilitable con `SEED_DEMO=false`.
 - SMTP configurable con TLS/SSL/login para Gmail/SMTP institucional.

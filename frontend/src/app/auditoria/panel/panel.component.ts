@@ -100,7 +100,6 @@ export class PanelComponent implements OnInit {
             resultado: decision.resultado };
     });
     this.api.post(`/auditorias/solicitudes/${fila.id}`, {
-      auditor_id: 1,
       decisiones,
     }).subscribe(() => {
       delete this.documentos[fila.id];
