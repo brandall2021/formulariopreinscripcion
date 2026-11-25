@@ -9,11 +9,14 @@ from app.notificaciones.router import router as consentimientos_router
 from app.reportes.router import router as reportes_router, admin_router
 from app.solicitudes.router import router as solicitudes_router
 from fastapi import FastAPI
+import os
 from fastapi.middleware.cors import CORSMiddleware
 app = FastAPI(title="FACE Preinscripción API")
+origins = [o.strip() for o in os.getenv("CORS_ORIGINS", "http://localhost:4200").split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:4200"],
+    allow_origins=origins,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
