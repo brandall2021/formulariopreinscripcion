@@ -51,6 +51,22 @@ type DecisionLocal = { resultado: 'APROBADO' | 'OBSERVADO'; motivo?: string };
   `],
   template: `
     <h1>Auditoría documental</h1>
+    <details class="card">
+      <summary>Exportar legajo del alumno</summary>
+      <p>El ZIP incluye los datos del alumno, sus solicitudes y todas las versiones disponibles de los documentos. El archivo legajo.json identifica las versiones faltantes.</p>
+      <label>Seleccioná una solicitud del alumno
+        <select #solicitudExportar>
+          <option value="">Seleccioná una solicitud</option>
+          @for (sol of solicitudesExportables; track sol.id) {
+            <option [value]="sol.id">{{ sol.numero || ('Borrador ' + sol.id) }} · DNI {{ sol.dni }}</option>
+          }
+        </select>
+      </label>
+      <button type="button" (click)="exportarLegajo(solicitudExportar.value)" [disabled]="exportando">
+        {{ exportando ? 'Preparando legajo…' : 'Exportar legajo ZIP' }}
+      </button>
+      @if (errorExportacion) { <p role="alert">{{ errorExportacion }}</p> }
+    </details>
     <details class="card" (toggle)="alAlternarHistorial($event)">
       <summary>Auditoría de aprobación</summary>
       @if (cargandoAprobaciones) { <p role="status">Cargando aprobaciones…</p> }
@@ -141,6 +157,9 @@ type DecisionLocal = { resultado: 'APROBADO' | 'OBSERVADO'; motivo?: string };
 export class PanelComponent implements OnInit {
   private api = inject(ApiService);
   filas: Fila[] = [];
+  solicitudesExportables: Fila[] = [];
+  exportando = false;
+  errorExportacion = '';
   documentos: Record<number, Doc[]> = {};
   selecciones: Record<number, Record<number, DecisionLocal>> = {};
   motivos: Record<number, Record<number, string>> = {};
@@ -221,8 +240,41 @@ export class PanelComponent implements OnInit {
 
   ngOnInit() {
     this.api.get<Fila[]>('/auditorias/solicitudes')
-      .subscribe(filas => this.filas = filas.filter(
-        f => f.estado === 'EN_AUDITORIA' || f.estado === 'EN_REAUDITORIA'));
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: filas => {
+          this.solicitudesExportables = filas;
+          this.filas = filas.filter(f => f.estado === 'EN_AUDITORIA' || f.estado === 'EN_REAUDITORIA');
+        },
+        error: () => { this.errorExportacion = 'No se pudo cargar el listado de solicitudes.'; },
+      });
+  }
+
+  exportarLegajo(solicitud: string) {
+    if (this.exportando) return;
+    if (!solicitud) {
+      this.errorExportacion = 'Seleccioná una solicitud para exportar el legajo.';
+      return;
+    }
+    this.exportando = true;
+    this.errorExportacion = '';
+    this.api.descargar(`/auditorias/solicitudes/${solicitud}/legajo`)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: archivo => {
+          const url = URL.createObjectURL(archivo);
+          const enlace = document.createElement('a');
+          enlace.href = url;
+          enlace.download = `legajo-solicitud-${solicitud}.zip`;
+          enlace.click();
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+          this.exportando = false;
+        },
+        error: () => {
+          this.exportando = false;
+          this.errorExportacion = 'No se pudo exportar el legajo. Intentá nuevamente.';
+        },
+      });
   }
 
   cargarDocumentos(fila: Fila) {

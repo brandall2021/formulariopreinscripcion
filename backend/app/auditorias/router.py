@@ -1,16 +1,21 @@
+import logging
 import json
 from datetime import timezone
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from app.alumnos.models import Alumno
+from app.auditorias.legajo import crear_legajo, leer_legajo
 from app.auditorias.models import Auditoria, Observacion
 from app.auditorias.service import registrar_auditoria
 from app.auth.deps import require_roles
 from app.auth.models import Usuario
 from app.catalogos.models import TipoDocumento
 from app.documentos.models import Documento, DocumentoVersion
+from app.documentos.router import get_store
 from app.infra.db import get_db
+from app.infra.storage import ObjectStore
 from app.notificaciones.events import publicar_evento
 from app.solicitudes.models import Solicitud
 from worker.tasks import enviar_notificacion
@@ -80,6 +85,25 @@ def listar(estado: str | None = None, carrera_id: int | None = None,
     if carrera_id:
         query = query.filter_by(carrera_id=carrera_id)
     return query.all()
+
+@router.get("/solicitudes/{solicitud_id}/legajo")
+def exportar_legajo(solicitud_id: int, db: Session = Depends(get_db),
+                    store: ObjectStore = Depends(get_store),
+                    claims: dict = Depends(require_roles("auditor", "admin"))):
+    usuario = db.query(Usuario).filter_by(email=claims.get("sub"), activo=True).first()
+    if usuario is None or usuario.rol not in ("auditor", "admin"):
+        raise HTTPException(403, "auditor no autorizado")
+    sol = db.get(Solicitud, solicitud_id)
+    alumno = db.get(Alumno, sol.alumno_id) if sol else None
+    if alumno is None:
+        raise HTTPException(404, "Alumno no encontrado.")
+    archivo = crear_legajo(db, store, alumno)
+    logging.getLogger(__name__).info("exportacion_legajo alumno_id=%s usuario_id=%s", alumno.id, usuario.id)
+    return StreamingResponse(leer_legajo(archivo), media_type="application/zip", headers={
+        "Cache-Control": "private, no-store",
+        "Content-Disposition": f'attachment; filename="legajo-{alumno.id}.zip"',
+    })
+
 
 @router.get("/solicitudes/{solicitud_id}/documentos")
 def documentos(solicitud_id: int, db: Session = Depends(get_db)):

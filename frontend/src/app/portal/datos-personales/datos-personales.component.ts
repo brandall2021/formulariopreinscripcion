@@ -8,6 +8,10 @@ import { SolicitudService } from '../solicitud.service';
   selector: 'app-datos-personales',
   standalone: true,
   imports: [ReactiveFormsModule],
+  styles: [`
+    .declaracion { display: flex; align-items: flex-start; gap: 12px; margin-block: 20px; }
+    .declaracion input { flex: none; width: 20px; min-height: 20px; margin: 0; }
+  `],
   template: `
     <div class="stack">
       <header>
@@ -61,6 +65,10 @@ import { SolicitudService } from '../solicitud.service';
             </select>
           </label>
         </div>
+        <label class="declaracion">
+          <input type="checkbox" formControlName="acepta_declaracion" required>
+          <span>Declaro que he leído y acepto las reglas y requisitos de preinscripción de FACE UNT y que los documentos que presente son auténticos, válidos y obtenidos legalmente.</span>
+        </label>
         @if (catalogosLoading) { <p class="muted" role="status">Cargando opciones…</p> }
         @if (catalogosError) { <p class="error" role="alert">{{ catalogosError }}</p> }
         @if (error) { <p class="error" role="alert">{{ error }}</p> }
@@ -86,6 +94,7 @@ export class DatosPersonalesComponent implements OnInit {
     convocatoria_id: [0, Validators.min(1)],
     carrera_id: [0, Validators.min(1)],
     tipo_ingresante: ['nuevo', Validators.required],
+    acepta_declaracion: [false, Validators.requiredTrue],
   });
   convocatorias: { id: number; nombre: string; anio: number }[] = [];
   carreras: { id: number; nombre: string; codigo: string }[] = [];

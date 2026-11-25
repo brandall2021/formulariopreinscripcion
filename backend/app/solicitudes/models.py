@@ -15,6 +15,7 @@ class Solicitud(Base):
     dni: Mapped[str] = mapped_column(String(20))
     estado: Mapped[str] = mapped_column(String(40), default="BORRADOR")
     version: Mapped[int] = mapped_column(Integer, default=1)
+    declaracion_aceptada_en: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

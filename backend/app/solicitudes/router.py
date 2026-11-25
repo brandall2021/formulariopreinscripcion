@@ -1,3 +1,4 @@
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
@@ -29,6 +30,7 @@ class SolicitudIn(BaseModel):
     fecha_nacimiento: str | None = None
     domicilio: str | None = None
     discapacidad: bool = False
+    acepta_declaracion: bool = False
     convocatoria_id: int
     carrera_id: int
     tipo_ingresante: str
@@ -41,11 +43,14 @@ class ReenviarIn(BaseModel):
 
 @router.post("", response_model=SolicitudOut)
 def crear(data: SolicitudIn, db: Session = Depends(get_db), claims: dict = Depends(require_roles("alumno"))):
+    if not data.acepta_declaracion:
+        raise HTTPException(422, "Aceptá las reglas y la declaración de autenticidad para continuar.")
     if db.get(Convocatoria, data.convocatoria_id) is None:
         raise HTTPException(422, "Seleccioná una convocatoria válida.")
     if db.get(Carrera, data.carrera_id) is None:
         raise HTTPException(422, "Seleccioná una carrera válida.")
     payload = data.model_dump()
+    payload['declaracion_aceptada_en'] = datetime.utcnow()
     payload["email"] = claims.get("sub", str(data.email))
     try:
         return service.crear_borrador(db, payload["email"], payload)

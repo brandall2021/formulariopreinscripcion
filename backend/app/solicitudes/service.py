@@ -42,7 +42,8 @@ def crear_borrador(db: Session, email: str, data: dict) -> Solicitud:
     sol = Solicitud(numero=None, alumno_id=alumno.id, convocatoria_id=conv.id,
                     carrera_id=data["carrera_id"],
                     tipo_ingresante=data["tipo_ingresante"],
-                    dni=alumno.dni, estado="BORRADOR")
+                    dni=alumno.dni, estado="BORRADOR",
+                    declaracion_aceptada_en=data.get("declaracion_aceptada_en"))
     db.add(sol)
     db.commit()
     return sol
