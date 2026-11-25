@@ -34,8 +34,15 @@ type DecisionLocal = { resultado: 'APROBADO' | 'OBSERVADO'; motivo?: string };
               <li>
                 Documento {{ doc.documento_id }} v{{ doc.version }} ({{ doc.estado }})
                 @for (motivo of doc.observaciones; track motivo) { <em>{{ motivo }}</em> }
-                <button (click)="aprobar(fila, doc)">Aprobar</button>
-                <button (click)="observar(fila, doc)">Observar</button>
+                <button type="button" (click)="aprobar(fila, doc)">Aprobar</button>
+                <label>Motivo si observás
+                  <textarea rows="2" [value]="motivos[fila.id]?.[doc.documento_id] || ''"
+                    (input)="setMotivo(fila, doc, $any($event.target).value)"></textarea>
+                </label>
+                <button type="button" (click)="observar(fila, doc)"
+                  [disabled]="!(motivos[fila.id]?.[doc.documento_id] || '').trim()">
+                  Observar documento
+                </button>
               </li>
             }
           </ul>
@@ -54,6 +61,7 @@ export class PanelComponent implements OnInit {
   filas: Fila[] = [];
   documentos: Record<number, Doc[]> = {};
   selecciones: Record<number, Record<number, DecisionLocal>> = {};
+  motivos: Record<number, Record<number, string>> = {};
 
   ngOnInit() {
     this.api.get<Fila[]>('/auditorias/solicitudes')
@@ -74,9 +82,13 @@ export class PanelComponent implements OnInit {
     this.selecciones[fila.id][doc.documento_id] = { resultado: 'APROBADO' };
   }
 
+  setMotivo(fila: Fila, doc: Doc, motivo: string) {
+    this.motivos[fila.id] ??= {};
+    this.motivos[fila.id][doc.documento_id] = motivo;
+  }
   observar(fila: Fila, doc: Doc) {
-    const motivo = window.prompt('Motivo de la observación');
-    if (!motivo?.trim()) return;
+    const motivo = this.motivos[fila.id]?.[doc.documento_id] ?? '';
+    if (!motivo.trim()) return;
     this.selecciones[fila.id] ??= {};
     this.selecciones[fila.id][doc.documento_id] = {
       resultado: 'OBSERVADO', motivo: motivo.trim(),
@@ -104,6 +116,7 @@ export class PanelComponent implements OnInit {
     }).subscribe(() => {
       delete this.documentos[fila.id];
       delete this.selecciones[fila.id];
+      delete this.motivos[fila.id];
       this.filas = this.filas.filter(f => f.id !== fila.id);
     });
   }

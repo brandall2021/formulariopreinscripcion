@@ -6,13 +6,26 @@ import { SolicitudService } from '../solicitud.service';
   selector: 'app-seguimiento',
   standalone: true,
   template: `
-    <h1>Mi preinscripción</h1>
-    <p>Solicitud: {{ numero }}</p>
-    <p>Estado: {{ estado }}</p>
-    @for (obs of observados; track obs.documento_id) {
-      <article>Documento {{ obs.documento_id }}: {{ obs.motivo }}</article>
-    }
-    <button (click)="corregir()">Corregir documentos</button>
+    <div class="stack">
+      <header>
+        <p class="muted">Paso 3 de 3 · Seguimiento</p>
+        <h1>Mi preinscripción</h1>
+        <p>Solicitud <strong>{{ numero }}</strong></p>
+        <span class="status">{{ etiquetaEstado }}</span>
+      </header>
+      @if (observados.length) {
+        <section>
+          <h2>Necesitás corregir estos documentos</h2>
+          <p>Reemplazalos y luego reenviá la documentación para una nueva revisión.</p>
+          @for (obs of observados; track obs.documento_id) {
+            <article><strong>Documento {{ obs.documento_id }}</strong><p>{{ obs.motivo }}</p></article>
+          }
+          <button type="button" (click)="corregir()">Corregir documentos</button>
+        </section>
+      } @else {
+        <section><h2>Todo en orden</h2><p>No hay observaciones pendientes. Te avisaremos por correo cuando cambie el estado.</p></section>
+      }
+    </div>
   `,
 })
 export class SeguimientoComponent implements OnInit {
@@ -22,6 +35,9 @@ export class SeguimientoComponent implements OnInit {
   numero = '';
   estado = '';
   observados: { documento_id: number; motivo: string }[] = [];
+  get etiquetaEstado() {
+    return this.estado.replaceAll('_', ' ') || 'Cargando…';
+  }
   id = Number(this.route.snapshot.paramMap.get('id'));
 
   ngOnInit() {

@@ -1,1 +1,46 @@
-/* You can add global styles to this file, and also import other style files */
+:root {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: #172033;
+  background: #f4f7fb;
+  --navy: #12304a; --blue: #1769aa; --ink: #172033; --muted: #5d6b7e;
+  --line: #dce4ee; --surface: #fff; --success: #16794c; --danger: #b42318;
+  --radius: 16px; --shadow: 0 12px 30px rgba(18, 48, 74, .08);
+}
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; background: #f4f7fb; }
+button, input, select, textarea { font: inherit; }
+a { color: var(--blue); }
+:focus-visible { outline: 3px solid #f5b942; outline-offset: 3px; }
+.site-header { min-height: 72px; display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 12px clamp(16px, 5vw, 72px); background: var(--navy); color: white; }
+.brand { display: inline-flex; align-items: center; gap: 10px; color: white; text-decoration: none; }
+.brand-mark { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 11px; background: linear-gradient(135deg, #43c6d4, #1769aa); font-size: 1.35rem; font-weight: 800; }
+.brand strong, .brand small { display: block; line-height: 1.1; }
+.brand small { margin-top: 3px; color: #b9d1e3; font-size: .72rem; }
+nav { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; }
+nav a { color: #e5f3fb; text-decoration: none; font-size: .92rem; }
+.page-shell { width: min(1120px, calc(100% - 32px)); margin: 32px auto 64px; }
+.site-footer { padding: 18px; color: var(--muted); text-align: center; font-size: .82rem; }
+form, article, section, .card, .dashboard-grid { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+form, article, section, .card { padding: clamp(18px, 3vw, 30px); }
+h1 { margin: 0 0 10px; color: var(--navy); font-size: clamp(1.65rem, 3vw, 2.3rem); }
+h2 { color: var(--navy); font-size: 1.1rem; }
+p { line-height: 1.55; }
+label { display: grid; gap: 7px; margin: 14px 0; color: var(--navy); font-weight: 650; }
+input, select, textarea { width: 100%; min-height: 44px; border: 1px solid #b9c8d8; border-radius: 10px; padding: 10px 12px; color: var(--ink); background: white; }
+input:focus, select:focus, textarea:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(23, 105, 170, .14); outline: 0; }
+.button, button:not(.unstyled) { display: inline-flex; justify-content: center; align-items: center; min-height: 44px; border: 0; border-radius: 10px; padding: 10px 17px; background: var(--blue); color: white; cursor: pointer; font-weight: 700; }
+button:disabled { opacity: .55; cursor: not-allowed; }
+.button-ghost { background: transparent; border: 1px solid rgba(255,255,255,.45); }
+.button-small { min-height: 36px; padding: 7px 12px; font-size: .85rem; }
+.error, [role="alert"] { border-radius: 10px; padding: 12px 14px; color: var(--danger); background: #fff0ee; }
+.success { border-radius: 10px; padding: 12px 14px; color: var(--success); background: #eaf8f0; }
+.muted { color: var(--muted); }
+.status { display: inline-flex; border-radius: 999px; padding: 5px 10px; background: #e8f1f8; color: var(--navy); font-size: .78rem; font-weight: 750; }
+.stack { display: grid; gap: 18px; }
+.grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+@media (max-width: 680px) {
+  .site-header { align-items: flex-start; flex-direction: column; }
+  nav { width: 100%; }
+  .page-shell { width: min(100% - 20px, 1120px); margin-top: 20px; }
+  .grid-2 { grid-template-columns: 1fr; }
+}

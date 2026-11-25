@@ -1,1 +1,16 @@
-<router-outlet />
+<header class="site-header">
+  <a class="brand" routerLink="/" aria-label="FACE, inicio">
+    <span class="brand-mark" aria-hidden="true">F</span>
+    <span><strong>FACE</strong><small>Preinscripciones</small></span>
+  </a>
+  @if (loggedIn) {
+    <nav aria-label="Navegación principal">
+      @if (role === 'alumno') { <a routerLink="/portal/datos">Mi preinscripción</a> }
+      @if (role === 'auditor' || role === 'admin') { <a routerLink="/auditoria">Auditoría</a> }
+      @if (role === 'admin') { <a routerLink="/admin">Dashboard</a> }
+      <button class="button button-ghost button-small" type="button" (click)="logout()">Salir</button>
+    </nav>
+  }
+</header>
+<main class="page-shell"><router-outlet /></main>
+<footer class="site-footer">Facultad de Ciencias Económicas · UNT</footer>
