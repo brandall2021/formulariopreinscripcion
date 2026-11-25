@@ -4,6 +4,7 @@ from collections import defaultdict, deque
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 from starlette.responses import JSONResponse
 
 from app import alumnos, auditorias, auth, catalogos, consentimientos, documentos, historial, notificaciones, solicitudes  # noqa: F401
@@ -83,3 +84,42 @@ def startup_seed():
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+def _check_db() -> bool:
+    try:
+        with SessionLocal() as db:
+            db.execute(text("SELECT 1"))
+        return True
+    except Exception:
+        return False
+
+
+def _check_redis() -> bool:
+    try:
+        import redis
+
+        client = redis.Redis.from_url(settings.redis_url, socket_connect_timeout=2,
+                                      socket_timeout=2)
+        return bool(client.ping())
+    except Exception:
+        return False
+
+
+def _check_minio() -> bool:
+    try:
+        from minio import Minio
+
+        client = Minio(settings.minio_endpoint, access_key=settings.minio_access_key,
+                       secret_key=settings.minio_secret_key, secure=False)
+        return bool(client.bucket_exists(settings.minio_bucket))
+    except Exception:
+        return False
+
+
+@app.get("/health/ready")
+def ready():
+    checks = {"database": _check_db(), "redis": _check_redis(), "minio": _check_minio()}
+    ok = all(checks.values())
+    return JSONResponse({"status": "ok" if ok else "degraded", "checks": checks},
+                        status_code=200 if ok else 503)

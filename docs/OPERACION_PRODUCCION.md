@@ -59,7 +59,7 @@ Usar `mc mirror` o versión/replicación del bucket. Probar restauración de un 
 
 ## 4. Monitoreo y alertas
 
-- Healthchecks: `/health` API, estado worker Celery, Redis, PostgreSQL, MinIO.
+- Healthchecks: `/health` (liveness), `/health/ready` (PostgreSQL + Redis + MinIO, responde 503 si algo falla), estado del worker Celery y cola.
 - Alertas: 5xx API, worker sin heartbeat, cola atrasada, fallos SMTP, fallos MinIO, disco.
 - Logs centralizados y retención definida.
 
