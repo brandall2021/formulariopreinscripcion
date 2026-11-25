@@ -24,9 +24,10 @@ type RequisitoVista = Requisito & { nombre: string; descripcion?: string };
           </div>
           <label [for]="'doc-' + req.tipo_documento_id">Seleccionar archivo
             <input [id]="'doc-' + req.tipo_documento_id" type="file" accept=".pdf,.jpg,.jpeg,.png"
+                   [disabled]="confirmando || confirmado || estados[req.tipo_documento_id] === 'Subiendo…'"
                    (change)="subir(req.tipo_documento_id, $event)">
           </label>
-          @if (errores[req.id]) { <p class="error" role="alert">{{ errores[req.id] }}</p> }
+          @if (errores[req.tipo_documento_id]) { <p class="error" role="alert">{{ errores[req.tipo_documento_id] }}</p> }
         </section>
       } @empty {
         <p class="card" role="status">
@@ -37,7 +38,7 @@ type RequisitoVista = Requisito & { nombre: string; descripcion?: string };
         <h2>Confirmar preinscripción</h2>
         <p class="muted">Cuando confirmes, la solicitud pasará a validación documental.</p>
         <button type="button" (click)="confirmar()"
-          [disabled]="documentosCargados !== requisitos.length || confirmando || confirmado">
+          [disabled]="!puedeConfirmar">
           {{ confirmado ? 'Preinscripción confirmada' : (confirmando ? 'Confirmando…' : 'Confirmar preinscripción') }}
         </button>
         @if (errores[0]) { <p class="error" role="alert">{{ errores[0] }}</p> }
@@ -77,7 +78,7 @@ export class DocumentosComponent {
     });
   }
   get documentosCargados() {
-    return this.requisitos.filter(req => this.estados[req.id] === 'Cargado').length;
+    return this.requisitos.filter(req => this.estados[req.tipo_documento_id] === 'Cargado').length;
   }
 
   async subir(tipoDocumentoId: number, event: Event) {
@@ -90,7 +91,14 @@ export class DocumentosComponent {
       return;
     }
     this.estados[tipoDocumentoId] = 'Subiendo…';
-    const checksum = await sha256(archivo);
+    let checksum: string;
+    try {
+      checksum = await sha256(archivo);
+    } catch {
+      this.estados[tipoDocumentoId] = 'Error';
+      this.errores[tipoDocumentoId] = 'No se pudo verificar el archivo. Intentá nuevamente.';
+      return;
+    }
     this.service.pedirUrlSubida({
       solicitud_id: this.solicitudId, tipo_documento_id: tipoDocumentoId,
       filename: archivo.name, content_type: archivo.type,
@@ -116,8 +124,13 @@ export class DocumentosComponent {
     });
   }
 
+  get puedeConfirmar() {
+    return this.solicitudId > 0 && !this.cargandoRequisitos && this.requisitos.length > 0
+      && this.documentosCargados === this.requisitos.length && !this.confirmando && !this.confirmado;
+  }
+
   confirmar() {
-    if (this.documentosCargados !== this.requisitos.length || this.confirmando) return;
+    if (!this.puedeConfirmar) return;
     const version = Number(localStorage.getItem('solicitudVersion') ?? 1);
     this.confirmando = true;
     this.service.confirmar(this.solicitudId, version).subscribe({
